@@ -7,3 +7,20 @@ async function panelFetch(url, options = {}) {
     if (response.status === 401) document.getElementById('session-expired').hidden = false;
     return response;
 }
+
+async function panelLabels(url, ids, key) {
+    const query = new URLSearchParams();
+    for (const id of new Set(ids.filter(Boolean))) query.append('id', id);
+    if (!query.size) return {};
+    try {
+        const response = await panelFetch(`${url}?${query}`);
+        return response.ok ? (await response.json())[key] || {} : {};
+    } catch {
+        return {};
+    }
+}
+
+function resolvePlayerNames(players) {
+    const ids = players.filter(player => !player?.displayName).map(player => player?.steamId);
+    return panelLabels('/players/names', ids, 'names');
+}

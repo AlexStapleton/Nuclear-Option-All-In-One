@@ -4,6 +4,7 @@
         <nav aria-label="Server management">
             <a href="{{ url_for('index') }}"{% if request.endpoint == 'index' %} aria-current="page"{% endif %}>Overview</a>
             <a href="{{ url_for('settings_page') }}"{% if request.endpoint == 'settings_page' %} aria-current="page"{% endif %}>Settings &amp; missions</a>
+            <a href="{{ url_for('mods_page') }}"{% if request.endpoint == 'mods_page' %} aria-current="page"{% endif %}>Mod management</a>
             <a href="{{ url_for('logs_page') }}"{% if request.endpoint == 'logs_page' %} aria-current="page"{% endif %}>Server logs</a>
             <a href="{{ url_for('moderation_page') }}"{% if request.endpoint == 'moderation_page' %} aria-current="page"{% endif %}>Moderation</a>
             <form method="post" action="{{ url_for('logout') }}" class="sign-out">

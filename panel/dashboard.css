@@ -102,6 +102,16 @@ footer { padding-block: 1.2rem 2rem; }
 .workshop-mods li { padding: .3rem 0; overflow-wrap: anywhere; }
 .workshop-mods li .meta { display: block; }
 .workshop-mods > p:last-child { margin-top: .65rem; }
+.mod-tools { margin-top: 1rem; }
+.mod-filter { max-width: 26rem; margin-top: .85rem; }
+.mod-table td { vertical-align: top; overflow-wrap: anywhere; }
+.mod-table .meta { display: block; margin-top: .3rem; }
+.mod-list { padding-left: 1.2rem; margin: .55rem 0; }
+.mod-table .mod-list { margin: 0; }
+.mod-list li + li { margin-top: .35rem; }
+.mod-list button { margin-left: .6rem; }
+.mod-coverage, #workshop-mod-plan { margin-top: .85rem; }
+#workshop-mod-plan > button { margin-top: .65rem; }
 .mission-fields { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
 .rotation-list { padding-left: 1.25rem; margin: 0; }
 .rotation-list li { border-top: 1px solid var(--line); padding: .75rem 0; }

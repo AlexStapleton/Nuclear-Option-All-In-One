@@ -15,10 +15,12 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 import config
 import mission_import
+import mod_inventory
 import panel_auth
 import server_commands
 import server_mods
 import server_options
+import steam_profiles
 import workshop
 from app import app, create_remote_commander
 
@@ -124,6 +126,37 @@ def configured_workshop_items(settings):
     return list(items)
 
 
+@app.get("/workshop/titles")
+def workshop_titles():
+    return jsonify(titles=resolve_workshop_titles(request.args.getlist("id")[:96]))
+
+
+def resolve_workshop_titles(keys, refresh=True):
+    identifiers = {}
+    for key in keys:
+        try:
+            identifiers[key] = workshop.item_id(key)
+        except ValueError:
+            continue
+    items = workshop.cached_items(DATA_DIR, identifiers.values(), refresh=refresh)
+    titles = {key: items[value]["title"] for key, value in identifiers.items()
+              if value in items and items[value].get("title")}
+    try:
+        selected = server_mods.selected_set(DATA_DIR)
+        if selected:
+            for key, identifier in identifiers.items():
+                if identifier == selected.get("item") and selected.get("title"):
+                    titles.setdefault(key, selected["title"])
+    except (OSError, ValueError):
+        pass
+    return titles
+
+
+@app.get("/players/names")
+def player_names():
+    return jsonify(names=steam_profiles.names_for(request.args.getlist("id")[:64]))
+
+
 def parse_mission(item):
     if not isinstance(item, dict) or not isinstance(item.get("Key"), dict):
         raise ValueError("Each mission needs a group, name, and time limit.")
@@ -161,8 +194,9 @@ def settings_page():
         custom = local_missions(settings)
     except (OSError, ValueError, TypeError):
         abort(503, "Check that the server data folder and its JSON config are readable.")
+    items = configured_workshop_items(settings)
     return render_template("settings.html", stock=STOCK_MISSIONS, custom=custom,
-                           workshop_items=configured_workshop_items(settings),
+                           workshop_items=items,
                            option_sections=server_options.SECTIONS,
                            option_values=server_options.form_values(settings),
                            mission_fields=mission_import.FIELDS,
@@ -170,6 +204,7 @@ def settings_page():
                                "name": settings.get("ServerName", ""),
                                "password_set": bool(settings.get("Password")),
                                "rotation_type": settings.get("RotationType", 0),
+                               "workshop_titles": resolve_workshop_titles(items, refresh=False),
                                "missions": settings.get("MissionRotation", []),
                                "revision": revision,
                            })
@@ -309,6 +344,75 @@ def mod_status():
         return jsonify(message="Could not read the selected mod set."), 503
 
 
+@app.get("/mods")
+def mods_page():
+    return render_template("mods.html", item=request.args.get("item", "")[:240])
+
+
+@app.get("/mods/inventory")
+def mod_inventory_data():
+    try:
+        settings, _ = read_config()
+        ids = configured_workshop_items(settings)
+        local = local_missions(settings)
+        rotation = settings.get("MissionRotation")
+        local_rotation = set()
+        for entry in rotation if isinstance(rotation, list) else []:
+            key = entry.get("Key") if isinstance(entry, dict) else None
+            if isinstance(key, dict) and key.get("Group") == "User" and isinstance(key.get("Name"), str):
+                local_rotation.add(key["Name"])
+        selected = server_mods.selected_set(DATA_DIR)
+        selected_id = selected.get("item") if selected else None
+        lookup_ids = [*ids[:96], *([selected_id] if selected_id else [])]
+        items = workshop.cached_items(DATA_DIR, lookup_ids)
+        declarations = workshop.read_metadata(DATA_DIR / ".panel-mission-mods.json")
+        declarations = {name: declarations[name] for name in local if name in declarations}
+        packages, available = mod_inventory.catalog()
+        return jsonify(mod_inventory.build(items, ids, local, local_rotation, declarations, selected, packages, available))
+    except (OSError, ValueError, TypeError, KeyError):
+        return jsonify(message="Could not read the mission and mod inventory."), 503
+
+
+@app.post("/mods/local")
+def record_local_mod():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(message="Choose a local scenario and catalog package."), 400
+    name, key, action = (data.get(field) for field in ("mission", "package", "action"))
+    if (not isinstance(name, str) or not isinstance(key, str) or not server_mods.PACKAGE_ID.fullmatch(key)
+            or action not in ("add", "remove")):
+        return jsonify(message="Choose a local scenario and catalog package."), 400
+    if action == "add":
+        packages, available = mod_inventory.catalog()
+        if not available:
+            return jsonify(message="The mod catalog is unavailable. Try again."), 503
+        if key not in mod_inventory.package_index(packages):
+            return jsonify(message="Choose a package listed in the catalog."), 400
+    with CONFIG_LOCK:
+        try:
+            settings, _ = read_config()
+            if name not in local_missions(settings):
+                return jsonify(message="That scenario is no longer in the local mission folder."), 404
+            path = DATA_DIR / ".panel-mission-mods.json"
+            declarations = workshop.read_metadata(path)
+            saved = declarations.get(name, [])
+            keys = {value for value in saved if isinstance(value, str)} if isinstance(saved, list) else set()
+            if action == "add":
+                keys.add(key)
+                if len(keys) > server_mods.MOD_LIMIT:
+                    return jsonify(message="This scenario has reached the package limit."), 400
+            else:
+                keys.discard(key)
+            if keys:
+                declarations[name] = sorted(keys)
+            else:
+                declarations.pop(name, None)
+            workshop.write_metadata(path, declarations)
+        except (OSError, ValueError, TypeError):
+            return jsonify(message="Could not save the scenario's requirements."), 503
+    return jsonify(message="Saved the local scenario's requirements.")
+
+
 def install_mod_set(plan):
     def progress(message):
         with MOD_LOCK:
@@ -434,7 +538,10 @@ def queue_mission():
     )
     if status != "Success":
         return jsonify(message=f"Could not queue the mission. The server returned {status}."), 502
-    return jsonify(message=f"Queued {key['Name']} for after the current mission.")
+    label = key["Name"]
+    if key["Group"] == "Workshop":
+        label = resolve_workshop_titles([label], refresh=False).get(label, label)
+    return jsonify(message=f"Queued {label} for after the current mission.")
 
 
 if __name__ == "__main__":

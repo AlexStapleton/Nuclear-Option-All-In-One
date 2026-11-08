@@ -52,6 +52,7 @@ const operations = {
 let rosterRequest = 0;
 let reviewedAction;
 let running = false;
+let playerNames = new Map();
 
 async function requestCommand(name, data = {}) {
     const response = await panelFetch(`/command/${name}`, {
@@ -73,6 +74,8 @@ function updateSelection() {
 function makePlayerRow(player) {
     const row = document.createElement('tr');
     const id = typeof player?.steamId === 'string' ? player.steamId : '';
+    row.dataset.steamId = id;
+    row.insertCell().textContent = playerNames.get(id) || 'Name unavailable';
     row.insertCell().textContent = id || 'Unavailable';
     row.insertCell().textContent = player?.faction || '—';
     const action = row.insertCell();
@@ -81,7 +84,7 @@ function makePlayerRow(player) {
         button.type = 'button';
         button.textContent = 'Select';
         button.dataset.steamId = id;
-        button.setAttribute('aria-label', `Select player ${id}`);
+        button.setAttribute('aria-label', `Select ${playerNames.get(id) || id}`);
         button.addEventListener('click', () => {
             steamId.value = id;
             updateSelection();
@@ -100,12 +103,23 @@ async function refreshRoster() {
         if (request !== rosterRequest) return;
         const players = result.response?.Players;
         if (!ok || !Array.isArray(players)) throw new Error('Roster unavailable');
+        playerNames = new Map(players.map(player => [player?.steamId, player?.displayName || playerNames.get(player?.steamId)]));
         byId('moderation-players').replaceChildren(...players.map(makePlayerRow));
         roster.hidden = !players.length;
         rosterStatus.textContent = players.length
             ? `${players.length} connected · Select a player to fill in their Steam ID.`
             : 'No players connected. You can still enter a Steam ID manually.';
         updateSelection();
+        resolvePlayerNames(players).then(names => {
+            if (request !== rosterRequest) return;
+            for (const [id, name] of Object.entries(names)) playerNames.set(id, name);
+            for (const row of byId('moderation-players').rows) {
+                const name = playerNames.get(row.dataset.steamId);
+                if (!name) continue;
+                row.cells[0].textContent = name;
+                row.querySelector('button')?.setAttribute('aria-label', `Select ${name}`);
+            }
+        });
     } catch {
         if (request !== rosterRequest) return;
         roster.hidden = true;
@@ -171,10 +185,11 @@ byId('player-action').addEventListener('submit', (event) => {
     const name = operation.value;
     const action = operations[name];
     const data = {steam_id: steamId.value};
+    const player = playerNames.get(data.steam_id);
     const reason = byId('ban-reason').value.trim();
     if (name === 'banlist-add' && reason) data.reason = reason;
     reviewAction({...action, name, data, status: 'player-action-status',
-        detail: `Steam ID ${data.steam_id}. ${action.detail}`});
+        detail: `${player ? `${player} · ` : ''}Steam ID ${data.steam_id}. ${action.detail}`});
 });
 
 document.querySelectorAll('[data-command]').forEach((button) => {

@@ -8,7 +8,7 @@ from flask import jsonify, redirect, render_template, request, session, url_for
 
 import config
 
-PANEL_PAGES = ("index", "settings_page", "moderation_page", "logs_page")
+PANEL_PAGES = ("index", "settings_page", "moderation_page", "logs_page", "mods_page")
 SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 
 

@@ -9,10 +9,10 @@ RUN tar -xzf /tmp/panel.tar.gz -C /tmp \
 
 WORKDIR /app
 COPY config.py /app/config.py
-COPY manage.py mission_import.py panel_auth.py server_options.py server_mods.py workshop.py /app/
+COPY manage.py mission_import.py mod_inventory.py panel_auth.py server_options.py server_mods.py steam_profiles.py workshop.py /app/
 COPY settings.html /app/templates/settings.html
-COPY dashboard.html logs.html moderation.html /app/templates/
+COPY dashboard.html logs.html moderation.html mods.html /app/templates/
 COPY navigation.html login.html session-head.html /app/templates/
-COPY dashboard.css dashboard.js logs.js moderation.js mission-import.js server-settings.js session.js /app/static/
+COPY dashboard.css dashboard.js logs.js moderation.js mission-import.js mods.js server-settings.js session.js /app/static/
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 CMD ["python", "manage.py"]

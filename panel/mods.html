@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mod management · Nuclear Option</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+    {% include 'session-head.html' %}
+</head>
+<body>
+    {% include 'navigation.html' %}
+    <main class="shell page" id="mod-management" data-inventory="{{ url_for('mod_inventory_data') }}" data-local="{{ url_for('record_local_mod') }}">
+        <header class="hero">
+            <div>
+                <p class="eyebrow">Server administration</p>
+                <h1>Mod management</h1>
+                <p class="meta">See which missions need each mod and which packages other mods build on.</p>
+            </div>
+        </header>
+        <section class="card" aria-labelledby="inventory-title">
+            <div class="card-heading">
+                <h2 id="inventory-title">Dependency inventory</h2>
+                <button type="button" id="refresh-inventory">Refresh inventory</button>
+            </div>
+            <p class="meta" id="inventory-status" role="status">Checking mission requirements…</p>
+            <label class="field mod-filter">Filter by mod or mission <input type="search" id="mod-filter"></label>
+            <div class="table-wrap" id="inventory-table" hidden>
+                <table class="mod-table">
+                    <thead><tr><th scope="col">Mod</th><th scope="col">Role and selected version</th><th scope="col">Used by</th></tr></thead>
+                    <tbody id="inventory-rows"></tbody>
+                </table>
+            </div>
+            <details id="mod-coverage" class="mod-coverage" hidden>
+                <summary>Mission coverage</summary>
+                <ul id="coverage-list" class="mod-list"></ul>
+            </details>
+        </section>
+        <div class="settings-layout mod-tools">
+            <section class="card" aria-labelledby="install-heading">
+                <h2 id="install-heading">Install a Workshop mod set</h2>
+                <form id="mod-review-form">
+                    <label class="field">Workshop mission ID or link
+                        <input id="mod-item" list="workshop-install-options" value="{{ item }}" required>
+                    </label>
+                    <datalist id="workshop-install-options"></datalist>
+                    <button type="submit" id="review-mods">Review server install</button>
+                </form>
+                <div id="workshop-mod-plan" hidden>
+                    <div id="workshop-mod-choices"></div>
+                    <p id="workshop-mod-problems" class="meta" role="status"></p>
+                    <ul id="workshop-mod-assets" class="mod-list"></ul>
+                    <p class="meta">Catalog game versions show which game release each package was published for. Installing switches the server to this set and restarts the game.</p>
+                    <button type="button" id="install-mods" class="primary" disabled>Install and restart server</button>
+                </div>
+            </section>
+            <section class="card" aria-labelledby="server-mods-title" id="server-mods" data-url="{{ url_for('mod_status') }}">
+                <h2 id="server-mods-title">Server mod set</h2>
+                <p class="meta" id="selected-mods">Checking the selected mod set…</p>
+                <p class="meta command-status" role="status" id="mod-install-status"></p>
+                <div class="actions">
+                    <button type="button" id="vanilla-mods" hidden>Restart without mods</button>
+                    <a href="{{ url_for('logs_page') }}">Server logs</a>
+                </div>
+            </section>
+            <section class="card" aria-labelledby="local-mod-heading">
+                <h2 id="local-mod-heading">Local scenario requirements</h2>
+                <p class="meta">Record the packages a local scenario needs. These associations document usage in the inventory.</p>
+                <form id="local-mod-form">
+                    <label class="field">Local scenario <select id="local-mod-mission" required></select></label>
+                    <label class="field">Catalog package <select id="local-mod-package" required></select></label>
+                    <button type="submit" id="add-local-mod" disabled>Add requirement</button>
+                </form>
+                <p class="meta command-status" role="status" id="local-mod-status"></p>
+                <ul id="local-mod-list" class="mod-list"></ul>
+            </section>
+        </div>
+    </main>
+    <script defer src="{{ url_for('static', filename='mods.js') }}"></script>
+</body>
+</html>

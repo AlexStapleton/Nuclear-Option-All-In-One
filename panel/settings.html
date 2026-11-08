@@ -56,7 +56,7 @@
                             {% for name in custom %}<option data-group="User" value="{{ name }}">{{ name }}</option>{% endfor %}
                         </optgroup>
                         <optgroup id="saved-workshop" label="Saved Workshop items"{% if not workshop_items %} hidden{% endif %}>
-                            {% for item in workshop_items %}<option data-group="Workshop" value="{{ item }}">Workshop item {{ item }}</option>{% endfor %}
+                            {% for item in workshop_items %}<option data-group="Workshop" value="{{ item }}">{{ initial.workshop_titles.get(item, 'Workshop item ' ~ item) }}</option>{% endfor %}
                         </optgroup>
                     </select>
                 </label>
@@ -81,28 +81,13 @@
                         <p class="meta" id="workshop-mods-status" role="status"></p>
                         <ul id="workshop-mods-list" hidden></ul>
                         <p class="meta"><a id="workshop-source" target="_blank" rel="noopener">Mission on Steam</a> · <a href="https://github.com/Combat787/NOMM/releases" target="_blank" rel="noopener">Get NOMM</a></p>
-                        <button type="button" id="review-mods">Review server install</button>
-                        <div id="workshop-mod-plan" hidden>
-                            <div id="workshop-mod-choices"></div>
-                            <p id="workshop-mod-problems" class="meta" role="status"></p>
-                            <ul id="workshop-mod-assets"></ul>
-                            <p class="meta">Catalog game versions describe what each release was published for. Installing switches the server to this set and restarts the game.</p>
-                            <button type="button" id="install-mods" class="primary" disabled>Install and restart server</button>
-                        </div>
+                        <p class="meta"><a id="review-mods" href="{{ url_for('mods_page') }}">Review in Mod Management</a></p>
                     </section>
                 </div>
                 <p class="meta"><a href="https://steamcommunity.com/app/2168680/workshop/" target="_blank" rel="noopener">Browse the Nuclear Option Workshop</a>, then paste an item link here.</p>
                 <p class="meta"><a href="#import-heading">Import and edit a local mission</a>.</p>
             </section>
         </div>
-        <section class="card mission-import" aria-labelledby="server-mods-title" id="server-mods" data-url="{{ url_for('mod_status') }}">
-            <div class="card-heading">
-                <h2 id="server-mods-title">Server mod set</h2>
-                <button type="button" id="vanilla-mods" hidden>Restart without mods</button>
-            </div>
-            <p class="meta" id="selected-mods">Checking the selected mod set…</p>
-            <p class="meta" role="status" id="mod-install-status"></p>
-        </section>
         <section class="card mission-import" aria-labelledby="server-options-title">
             <div class="card-heading">
                 <h2 id="server-options-title">Server options</h2>
@@ -169,7 +154,7 @@
         const initial = {{ initial | tojson }};
         const byId = (id) => document.getElementById(id);
         const rotation = Array.isArray(initial.missions) ? initial.missions : [];
-        const workshopTitles = new Map();
+        const workshopTitles = new Map(Object.entries(initial.workshop_titles));
         let revision = initial.revision;
         byId('server-name').value = initial.name;
         byId('rotation-type').value = initial.rotation_type;
@@ -204,6 +189,7 @@
                 const item = document.createElement('li');
                 const title = document.createElement('strong');
                 const name = mission.Key?.Name;
+                if (mission.Key?.Group === 'Workshop') title.dataset.workshopTitle = name;
                 title.textContent = (mission.Key?.Group === 'Workshop' && workshopTitles.get(name)) || name || 'Unnamed mission';
                 const group = document.createElement('span');
                 group.className = 'meta';

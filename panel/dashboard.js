@@ -2,6 +2,9 @@ const byId = (id) => document.getElementById(id);
 const refreshButton = byId('refresh');
 const connectionState = byId('connection-state');
 let refreshing = false;
+let refreshNumber = 0;
+const missionTitles = new Map();
+let rosterNames = new Map();
 
 async function command(name, data = {}) {
     const response = await panelFetch(`/command/${name}`, {
@@ -23,11 +26,23 @@ function clock(seconds) {
     return `${minutes}:${String(whole % 60).padStart(2, '0')}`;
 }
 
-function renderMission(missions, time) {
+function renderMission(missions, time, refreshId) {
     const missionAvailable = missions.status === 'fulfilled';
     const progress = byId('mission-progress');
     byId('current-mission').textContent = missionAvailable ? missions.value?.currentMission?.Key?.Name || 'No active mission' : '—';
     byId('next-mission').textContent = missionAvailable ? missions.value?.nextMission?.Key?.Name || 'None reported' : '—';
+    const workshopMissions = [['current-mission', missions.value?.currentMission], ['next-mission', missions.value?.nextMission]]
+        .filter(([, mission]) => mission?.Key?.Group === 'Workshop');
+    for (const [id, mission] of workshopMissions) {
+        if (missionTitles.has(mission.Key.Name)) byId(id).textContent = missionTitles.get(mission.Key.Name);
+    }
+    panelLabels('/workshop/titles', workshopMissions.map(([, mission]) => mission.Key.Name), 'titles').then(titles => {
+        if (refreshId !== refreshNumber) return;
+        for (const [id, title] of Object.entries(titles)) missionTitles.set(id, title);
+        for (const [id, mission] of workshopMissions) {
+            if (titles[mission.Key.Name]) byId(id).textContent = titles[mission.Key.Name];
+        }
+    });
     const elapsed = time.value?.currentTime;
     const limit = time.value?.maxTime;
     const hasClock = Number.isFinite(elapsed) && elapsed >= 0 && Number.isFinite(limit) && limit > 0;
@@ -37,31 +52,42 @@ function renderMission(missions, time) {
     progress.value = hasClock ? Math.min(100, elapsed / limit * 100) : 0;
 }
 
-function renderRoster(result) {
+function renderRoster(result, refreshId) {
     const players = result.status === 'fulfilled' && Array.isArray(result.value?.Players) ? result.value.Players : null;
     byId('player-count').textContent = players?.length ?? '—';
     byId('roster').hidden = !players?.length;
     const message = byId('roster-status');
     message.hidden = Boolean(players?.length);
     message.textContent = players ? 'No players connected.' : 'Player list unavailable.';
+    rosterNames = new Map((players || []).map(player => [player?.steamId, player?.displayName || rosterNames.get(player?.steamId)]));
     byId('player-rows').replaceChildren(...(players || []).map((player) => {
         const row = document.createElement('tr');
+        row.dataset.steamId = player?.steamId ?? '';
+        row.insertCell().textContent = rosterNames.get(player?.steamId) || 'Name unavailable';
         row.insertCell().textContent = player?.steamId ?? '—';
         row.insertCell().textContent = player?.faction || '—';
         return row;
     }));
+    resolvePlayerNames(players || []).then(names => {
+        if (refreshId !== refreshNumber) return;
+        for (const [id, name] of Object.entries(names)) rosterNames.set(id, name);
+        for (const row of byId('player-rows').rows) {
+            if (rosterNames.has(row.dataset.steamId)) row.cells[0].textContent = rosterNames.get(row.dataset.steamId) || 'Name unavailable';
+        }
+    });
 }
 
 async function refresh() {
     if (refreshing) return;
     refreshing = true;
+    const refreshId = ++refreshNumber;
     refreshButton.disabled = true;
     try {
         const results = await Promise.allSettled([
             command('get-mission'), command('get-mission-time'), command('get-player-list'),
         ]);
-        renderMission(results[0], results[1]);
-        renderRoster(results[2]);
+        renderMission(results[0], results[1], refreshId);
+        renderRoster(results[2], refreshId);
         const successes = results.filter((result) => result.status === 'fulfilled').length;
         connectionState.dataset.state = successes === results.length ? 'online' : successes ? 'partial' : 'offline';
         connectionState.textContent = successes === results.length ? 'Server responding' : successes ? 'Partial response' : 'Server unreachable';

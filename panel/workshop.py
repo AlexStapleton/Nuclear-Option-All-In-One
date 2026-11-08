@@ -3,13 +3,17 @@
 import json
 import re
 from functools import lru_cache
-from time import monotonic
+from tempfile import NamedTemporaryFile
+from threading import Lock
+from time import monotonic, time
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import urlopen
 
 APP_ID = 2168680
 DETAILS_URL = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
 CATALOG_URL = "https://raw.githubusercontent.com/KopterBuzz/NOMNOM/main/manifest/manifest.json"
+CACHE_LOCK = Lock()
+CACHE_TTL = 1800
 
 # The mission author and the catalog sometimes use different names for the same package.
 MOD_ALIASES = {
@@ -74,13 +78,14 @@ def package_link(package, version):
     return base, None, None
 
 
-def find_mod_requirements(tags, description):
+def find_mod_requirements(tags, description, catalog=None):
     listed = listed_requirements(description)
     custom_map = "nocustommaps" in tags
     if not (listed or custom_map or "mod required" in tags):
         return {}
     try:
-        catalog = mod_catalog(int(monotonic() // 600)) if listed or custom_map else []
+        if catalog is None:
+            catalog = mod_catalog(int(monotonic() // 600)) if listed or custom_map else []
         unavailable = False
     except (OSError, ValueError, RecursionError):
         catalog, unavailable = [], True
@@ -143,13 +148,18 @@ def item_id(value):
     return str(int(identifier))
 
 
-def item_details(identifier):
-    body = urlencode({"itemcount": 1, "publishedfileids[0]": identifier}).encode()
+def fetch_items(identifiers):
+    fields = {f"publishedfileids[{index}]": identifier for index, identifier in enumerate(identifiers)}
+    body = urlencode({"itemcount": len(identifiers), **fields}).encode()
     try:
         with urlopen(DETAILS_URL, data=body, timeout=4) as response:
-            details = json.loads(response.read(512 * 1024))["response"]["publishedfiledetails"][0]
-    except (OSError, ValueError, KeyError, IndexError, TypeError):
-        return {"message": "Steam could not return item details. Check the link or try again."}
+            items = json.loads(response.read(2 * 1024 * 1024))["response"]["publishedfiledetails"]
+            return items if isinstance(items, list) else None
+    except (OSError, ValueError, KeyError, TypeError, RecursionError):
+        return None
+
+
+def describe_item(details, catalog=None):
     if not isinstance(details, dict) or details.get("result") != 1:
         return {"message": "Steam did not return a public item. Check its visibility and ID."}
     if str(details.get("consumer_app_id")) != str(APP_ID):
@@ -159,7 +169,75 @@ def item_details(identifier):
         return {"message": "Steam identifies this item as something other than a mission.", "incompatible": True}
     return {"title": str(details.get("title", "")),
             "mod_required": "mod required" in tags, "custom_map": "nocustommaps" in tags,
-            "mods": find_mod_requirements(tags, details.get("description"))}
+            "mods": find_mod_requirements(tags, details.get("description"), catalog)}
+
+
+def read_metadata(path):
+    try:
+        if not path.is_symlink():
+            with path.open("rb") as stream:
+                value = json.loads(stream.read(16 * 1024 * 1024))
+                if isinstance(value, dict):
+                    return value
+    except (OSError, ValueError, RecursionError):
+        pass
+    return {}
+
+
+def write_metadata(path, data):
+    stream = NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False)
+    temporary = path.parent / stream.name
+    try:
+        with stream:
+            json.dump(data, stream)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def cached_items(data_dir, identifiers, refresh=True):
+    """Keep display metadata separate from the numeric IDs in the game config."""
+    path = data_dir / ".panel-workshop.json"
+    with CACHE_LOCK:
+        saved = read_metadata(path)
+    now = time()
+    wanted = list(dict.fromkeys(identifiers))
+    cached = {key: saved[key] for key in wanted if isinstance(saved.get(key), dict)}
+    due = [key for key in wanted if now - cached.get(key, {}).get("checked", 0) >= CACHE_TTL] if refresh else []
+    updates = {}
+    for offset in range(0, len(due), 24):
+        group = due[offset:offset + 24]
+        response = fetch_items(group)
+        if response is None:
+            break
+        for item in response:
+            if not isinstance(item, dict) or str(item.get("publishedfileid")) not in group:
+                continue
+            key = str(item["publishedfileid"])
+            if item.get("result") != 1 or str(item.get("consumer_app_id")) != str(APP_ID):
+                continue
+            updates[key] = {"checked": now, "result": 1, "consumer_app_id": APP_ID,
+                            "title": str(item.get("title", ""))[:250],
+                            "description": str(item.get("description") or "")[:24000],
+                            "tags": item["tags"][:60] if isinstance(item.get("tags"), list) else []}
+    if updates:
+        with CACHE_LOCK:
+            saved = {key: value for key, value in read_metadata(path).items() if isinstance(value, dict)}
+            saved.update(updates)
+            recent = sorted(saved, key=lambda key: saved[key].get("checked", 0), reverse=True)[:256]
+            try:
+                write_metadata(path, {key: saved[key] for key in recent})
+            except OSError:
+                pass  # Steam metadata is still usable when the cache cannot be written.
+        cached.update(updates)
+    return cached
+
+
+def item_details(identifier):
+    items = fetch_items([identifier])
+    if items is None:
+        return {"message": "Steam could not return item details. Check the link or try again."}
+    return describe_item(items[0] if items else None)
 
 
 def has_mission_file(data_dir, identifier, limit):
