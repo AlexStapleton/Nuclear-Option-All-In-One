@@ -71,7 +71,7 @@ footer { padding-block: 1.2rem 2rem; }
 .page h2, .page h3, .page h5 { margin: 0 0 .75rem; }
 .page h2, .page h3 { font-size: 1.15rem; }
 .page h5 { font-size: 1rem; }
-.settings-layout, .console-layout { display: grid; align-items: start; gap: 1rem; }
+.settings-layout, .moderation-layout { display: grid; align-items: start; gap: 1rem; }
 .settings-layout { grid-template-columns: 1fr 1fr; }
 .settings-layout .field { display: grid; gap: .35rem; margin-bottom: .85rem; }
 .settings-layout .card > .meta { margin-top: .75rem; }
@@ -86,30 +86,34 @@ footer { padding-block: 1.2rem 2rem; }
 .rotation-list input { width: 6rem; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
 
-.console-layout { grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); }
-.console-controls > .row > .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin-bottom: .75rem; }
-.console-controls .col-md-12 { grid-column: 1 / -1; }
-.console-controls .command-card { height: 100%; }
-.console-controls .command-card .mb-3 { margin-bottom: .75rem; }
-.console-controls [data-command] { margin: .15rem .15rem .15rem 0; }
-.console-controls .btn-primary { color: #09231f; background: var(--accent); border-color: var(--accent); font-weight: 700; }
-.console-controls .btn-danger { color: #ffc8c8; background: #48232c; border-color: #935563; }
-.console-output { position: sticky; top: 1rem; }
-.console-output .command-card { border: 0; padding: 0 0 1rem; }
-.command-info { color: var(--muted); font-size: .85rem; }
-.command-name { color: var(--accent); margin-right: .5rem; }
-#response-area { background: #0d1721; border: 1px solid var(--line); border-radius: .5rem; min-height: 6rem; max-height: 45vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: .8rem; margin-bottom: 0; }
+.card-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; margin-bottom: .65rem; }
+.card-heading h2 { margin: 0; }
+.moderation-layout { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+.moderation-tools { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 1rem; }
+.moderation-tools summary, .command-details summary { cursor: pointer; font-weight: 700; }
+.moderation-tools summary + p, .command-details summary + p { margin-top: .65rem; }
+.player-action label:not(:first-child), #ban-reason-field { margin-top: .75rem; }
+#player-action-help { margin-top: .4rem; }
+#moderation-roster td:last-child, #moderation-roster th:last-child { text-align: right; }
+#moderation-roster button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.tool-row { display: flex; align-items: end; justify-content: space-between; flex-wrap: wrap; gap: .55rem 1rem; border-top: 1px solid var(--line); padding-top: .8rem; margin-top: .8rem; }
+.tool-row > div { flex: 1 1 12rem; }
+.danger { color: #ffc8c8; background: #48232c; border-color: #935563; }
+.command-status:not(:empty) { margin-top: .75rem; }
+.command-status[data-state="error"] { color: #ffa9a9; }
+.command-status[data-state="success"] { color: #8be1b8; }
+.command-details { margin-top: 1rem; }
+.action-dialog { width: min(100% - 2rem, 30rem); color: var(--text); }
+.action-dialog::backdrop { background: rgb(0 0 0 / .65); }
+.action-dialog form { margin: 0; }
+.action-dialog p { overflow-wrap: anywhere; }
+.action-dialog .actions { justify-content: flex-end; }
+#response-area { background: #0d1721; border: 1px solid var(--line); border-radius: .5rem; max-height: 45vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: .8rem; margin-bottom: 0; }
 #log-status { margin-top: .75rem; }
 #server-log { background: #0d1721; border: 1px solid var(--line); border-radius: .5rem; min-height: 12rem; max-height: 60vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: .8rem; margin-bottom: 0; }
-
-@media (prefers-reduced-motion: no-preference) {
-    .response-pulse { animation: response-flash .5s ease-out; }
-    @keyframes response-flash { from { border-color: var(--accent); } }
-}
 
 @media (max-width: 44rem) {
     .hero { padding-top: 1.65rem; }
     .connection .meta { text-align: left; }
-    .overview, .details, .settings-layout, .console-layout, .console-controls > .row > .row { grid-template-columns: 1fr; }
-    .console-output { position: static; grid-row: 1; }
+    .overview, .details, .settings-layout, .moderation-layout { grid-template-columns: 1fr; }
 }

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Moderation · Nuclear Option</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+    <script defer src="{{ url_for('static', filename='moderation.js') }}"></script>
+</head>
+<body>
+    {% include 'navigation.html' %}
+    <main class="shell page">
+        <header class="hero">
+            <div>
+                <p class="eyebrow">Server administration</p>
+                <h1>Moderation</h1>
+                <p class="meta">Manage player access and make one-off changes to the running server.</p>
+            </div>
+        </header>
+
+        <div class="moderation-layout">
+            <section class="card" aria-labelledby="connected-heading">
+                <div class="card-heading">
+                    <h2 id="connected-heading">Connected players</h2>
+                    <button type="button" id="refresh-roster">Refresh roster</button>
+                </div>
+                <p id="moderation-roster-status" class="meta" role="status">Loading players…</p>
+                <div class="table-wrap" id="moderation-roster" hidden>
+                    <table aria-labelledby="connected-heading">
+                        <thead><tr><th scope="col">Steam ID</th><th scope="col">Faction</th><th scope="col">Action</th></tr></thead>
+                        <tbody id="moderation-players"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="card player-action" aria-labelledby="player-action-heading">
+                <h2 id="player-action-heading">Player action</h2>
+                <p class="meta">Select a connected player or enter a Steam ID for someone offline.</p>
+                <form id="player-action">
+                    <label for="steam-id">Steam ID</label>
+                    <input id="steam-id" name="steam_id" inputmode="numeric" pattern="[0-9]{1,20}"
+                           maxlength="20" autocomplete="off" required>
+                    <label for="player-operation">Action</label>
+                    <select id="player-operation">
+                        <option value="kick-player">Kick player</option>
+                        <option value="banlist-add">Ban player</option>
+                        <option value="unkick-player">Undo kick</option>
+                        <option value="banlist-remove">Remove ban</option>
+                    </select>
+                    <p class="meta" id="player-action-help"></p>
+                    <div id="ban-reason-field" hidden>
+                        <label for="ban-reason">Ban reason (optional)</label>
+                        <input id="ban-reason" name="reason" type="text">
+                    </div>
+                    <button type="submit" class="primary" data-operation>Review action</button>
+                    <p class="meta command-status" id="player-action-status" role="status"></p>
+                </form>
+            </section>
+        </div>
+
+        <div class="moderation-layout moderation-tools">
+            <details class="card">
+                <summary>Ban and kick lists</summary>
+                <p class="meta">Manage access rules for more than one player.</p>
+                <div class="tool-row">
+                    <div><strong>Reload ban files</strong><p class="meta">Adds entries from the configured files to the active bans.</p></div>
+                    <button type="button" data-command="banlist-reload" data-operation>Reload bans</button>
+                </div>
+                <div class="tool-row">
+                    <div><strong>Clear all kicks</strong><p class="meta">Allows kicked players to rejoin if they have no active ban.</p></div>
+                    <button type="button" class="danger" data-command="clear-kicked-players" data-operation>Clear kicks</button>
+                </div>
+                <div class="tool-row">
+                    <div><strong>Clear active bans</strong><p class="meta">Clears in-memory bans. Ban files remain on disk.</p></div>
+                    <button type="button" class="danger" data-command="banlist-clear" data-operation>Clear bans</button>
+                </div>
+                <p class="meta command-status" id="list-status" role="status"></p>
+            </details>
+
+            <details class="card">
+                <summary>Server maintenance</summary>
+                <p class="meta">For mission rotation and saved settings, open <a href="{{ url_for('settings_page') }}">Settings &amp; missions</a>.</p>
+                <form class="tool-row" id="mission-timer">
+                    <div>
+                        <label for="time-remaining">Time left in the current mission (seconds)</label>
+                        <input id="time-remaining" name="time" type="number" min="0" step="any" placeholder="600" required>
+                    </div>
+                    <button type="submit" data-operation>Set timer</button>
+                </form>
+                <form class="tool-row" id="reload-config">
+                    <div>
+                        <label for="config-path">Config path (optional)</label>
+                        <input id="config-path" name="path" type="text" placeholder="Reload the active config">
+                    </div>
+                    <button type="submit" data-operation>Reload config</button>
+                </form>
+                <div class="tool-row">
+                    <div><strong>Update-ready signal</strong><p class="meta">Sends the game’s update-ready command.</p></div>
+                    <button type="button" data-command="update-ready" data-operation>Send signal</button>
+                </div>
+                <p class="meta command-status" id="maintenance-status" role="status"></p>
+            </details>
+        </div>
+
+        <details class="card command-details">
+            <summary>Last command response</summary>
+            <p class="meta" id="command-label">Run an action to see the server response.</p>
+            <pre id="response-area" hidden></pre>
+        </details>
+
+        <dialog class="card action-dialog" id="action-review" aria-labelledby="action-review-heading">
+            <form method="dialog">
+                <h2 id="action-review-heading">Review action</h2>
+                <p id="action-review-text"></p>
+                <div class="actions">
+                    <button type="submit" value="cancel" autofocus>Cancel</button>
+                    <button type="submit" value="confirm" id="action-confirm">Confirm</button>
+                </div>
+            </form>
+        </dialog>
+    </main>
+</body>
+</html>

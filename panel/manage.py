@@ -15,7 +15,7 @@ from flask import abort, jsonify, render_template, request
 
 import config
 import server_commands
-from app import app, create_remote_commander, index as command_console, requires_auth
+from app import app, create_remote_commander, requires_auth
 
 DATA_DIR = Path("/server")
 CONFIG_PATH = DATA_DIR / "DedicatedServerConfig.json"
@@ -43,9 +43,13 @@ def dashboard_page():
                            max_players=settings.get("MaxPlayers"))
 
 
-# Keep the upstream command page and all of its API endpoints available.
-app.add_url_rule("/commands", view_func=command_console, endpoint="command_console")
 app.view_functions["index"] = dashboard_page
+
+
+@app.get("/commands")
+@requires_auth
+def moderation_page():
+    return render_template("moderation.html")
 
 
 @app.get("/logs")

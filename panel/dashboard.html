@@ -44,7 +44,10 @@
 
         <div class="details">
             <section class="card" aria-labelledby="roster-label">
-                <h2 id="roster-label">Player roster</h2>
+                <div class="card-heading">
+                    <h2 id="roster-label">Player roster</h2>
+                    <a href="{{ url_for('moderation_page') }}">Moderate players</a>
+                </div>
                 <p id="roster-status" class="meta">Loading player list…</p>
                 <div class="table-wrap">
                     <table id="roster" hidden>

@@ -38,7 +38,7 @@ The launcher creates `DedicatedServerConfig.json` in your data folder. Use the p
 
 On Linux, run `cat .panel.env` from the project folder and copy the value after `PANEL_PASSWORD=`. This password is separate from the in-game password.
 
-In a browser on Windows or any other device on your LAN, open `http://LINUX_LAN_IP:5000`. For example, if the Linux box's LAN address is `192.168.1.50`, open `http://192.168.1.50:5000`. Sign in as `admin` with the generated password. Once the game server is ready, the dashboard shows the current and next missions and the player roster. Use **Advanced commands** for moderation and raw command responses.
+In a browser on Windows or any other device on your LAN, open `http://LINUX_LAN_IP:5000`. For example, if the Linux box's LAN address is `192.168.1.50`, open `http://192.168.1.50:5000`. Sign in as `admin` with the generated password. Once the game server is ready, the dashboard shows the current and next missions and the player roster.
 
 If the Linux host already uses port 5000, set `PANEL_PORT` in `.env`, run `sh start.sh` again, and use the new port in the URL. The panel uses HTTP with password authentication. Use it on a trusted LAN and keep its TCP port off your router's forwarding list. [Docker port publishing](https://docs.docker.com/engine/network/port-publishing/)
 
@@ -57,6 +57,8 @@ If you are upgrading an existing installation, run `git pull` and `sh start.sh` 
 Follow the [README's port and router setup](README.md#ports-and-router-setup) for the two UDP forwards, firewall pass rules, and the OPNsense hairpin NAT example.
 
 ## Day-to-day operation
+
+Open **Moderation** to select a connected player or enter a Steam ID manually. Choose an action and review it before sending it. Expand **Ban and kick lists** for bulk controls, **Server maintenance** for the mission timer or config reload, and **Last command response** for troubleshooting.
 
 Open **Server logs** in the panel for recent SteamCMD and game output. It refreshes every three seconds while the tab is visible. Use **Pause updates** to hold the current view or **Jump to latest** to scroll to the end. The Linux host keeps the current and previous log under `SERVER_DATA_DIR/.panel-logs/`, up to 1 MiB each. `docker compose logs nuclear-option` still shows the game container's output.
 

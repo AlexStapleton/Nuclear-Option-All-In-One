@@ -11,10 +11,8 @@ WORKDIR /app
 COPY config.py /app/config.py
 COPY manage.py /app/manage.py
 COPY settings.html /app/templates/settings.html
-COPY dashboard.html logs.html /app/templates/
+COPY dashboard.html logs.html moderation.html /app/templates/
 COPY navigation.html /app/templates/navigation.html
-COPY dashboard.css dashboard.js logs.js /app/static/
-COPY prepare_console.py /tmp/prepare_console.py
-RUN python /tmp/prepare_console.py templates/index.html
+COPY dashboard.css dashboard.js logs.js moderation.js /app/static/
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 CMD ["python", "manage.py"]

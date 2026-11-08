@@ -3,7 +3,7 @@
 Run the official Nuclear Option dedicated server on an x86-64 Linux host and manage it from a browser on your Windows PC. Docker Compose runs the game server and Shockfront's web control panel together.
 
 - **One-command start.** The launcher creates the initial server configuration, generates a panel password, and starts both containers. SteamCMD checks for game updates when the server container starts.
-- **Browser administration.** See live mission and player information, send announcements, rename the server, and manage its rotation. Select stock missions and local scenarios or add Steam Workshop links. The advanced console includes moderation and raw command responses.
+- **Browser administration.** See live mission and player information, send announcements, rename the server, and manage its rotation. Select stock missions and local scenarios or add Steam Workshop links. Use **Moderation** to kick or ban players and manage server access.
 - **LAN admin access.** Open `http://LINUX_LAN_IP:5000` from your browser. The game's remote-command port stays inside the stack.
 - **Live server logs.** Check Steam updates, game startup, and mission-loading messages under **Server logs**.
 - **Configurable storage.** Game files, settings, and custom missions live in `./server` by default. Set `SERVER_DATA_DIR` in `.env` to choose another host folder.
@@ -43,7 +43,7 @@ Refresh the Multiplayer browser at home and have someone on a different network 
 
 ## Upgrading an existing install
 
-Run `git pull` and `sh start.sh` from the project folder, then refresh the web panel. **Overview** is the live dashboard. **Settings & missions** edits the saved configuration. **Advanced commands** opens the original Shockfront console.
+Run `git pull` and `sh start.sh` from the project folder, then refresh the web panel. **Overview** shows live status and sends announcements. **Settings & missions** edits the saved configuration and queues missions. **Moderation** handles player access and one-off maintenance commands.
 
 ## Credits
 
