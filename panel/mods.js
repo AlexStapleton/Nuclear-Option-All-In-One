@@ -132,7 +132,7 @@ async function changeModSet(action, data = {}) {
     try {
         const result = await modRequest({action, plan: modPlanId, ...data});
         modStatus.textContent = result.message;
-        if (action === 'install' || action === 'save_set') modBusy = true;
+        if (['install', 'save_set', 'clean_copy'].includes(action)) modBusy = true;
         if (['vanilla', 'activate', 'pin'].includes(action)) {
             resetModPlan();
             loadInventory();
@@ -165,8 +165,9 @@ function showSavedSets(sets, selectedId, running) {
         details.className = 'saved-mod-set';
         const summary = document.createElement('summary');
         const differences = set.versions.filter(mod => currentVersions.get(mod.name) !== mod.version);
-        summary.textContent = set.id === selectedId ? `${set.title} · Selected`
-            : `${set.title} · ${differences.length ? differences.slice(0, 2).map(mod => `${mod.name} v${mod.version}`).join(', ') : 'Saved version set'}`;
+        const title = set.clean_copy ? `${set.title} (clean copy)` : set.title;
+        summary.textContent = set.id === selectedId ? `${title} · Selected`
+            : `${title} · ${differences.length ? differences.slice(0, 2).map(mod => `${mod.name} v${mod.version}`).join(', ') : 'Saved version set'}`;
         details.append(summary);
         const list = document.createElement('ul');
         list.className = 'mod-list';
@@ -176,14 +177,23 @@ function showSavedSets(sets, selectedId, running) {
             list.append(item);
         }
         details.append(list);
+        const actions = document.createElement('div');
+        actions.className = 'actions';
         if (set.id !== selectedId) {
             const activate = document.createElement('button');
             activate.type = 'button';
             activate.textContent = 'Use this set and restart';
             activate.disabled = running;
             activate.addEventListener('click', () => changeModSet('activate', {set: set.id}));
-            details.append(activate);
+            actions.append(activate);
         }
+        const clean = document.createElement('button');
+        clean.type = 'button';
+        clean.textContent = 'Download clean copy';
+        clean.disabled = running;
+        clean.addEventListener('click', () => changeModSet('clean_copy', {set: set.id}));
+        actions.append(clean);
+        details.append(actions);
         return details;
     });
     byId('saved-sets').replaceChildren(...rows);

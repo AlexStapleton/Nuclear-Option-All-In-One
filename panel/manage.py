@@ -881,6 +881,14 @@ def manage_mods():
                 return jsonify(message="Could not select vanilla mode. Check the server data folder."), 503
             mod_job["message"] = "Vanilla mode selected. Check Server logs for the restart."
             return jsonify(message=mod_job["message"])
+        if action == "clean_copy":
+            try:
+                plan = server_mods.clean_copy_plan(DATA_DIR, data.get("set"))
+            except (ValueError, OSError):
+                return jsonify(message="Could not read that saved mod set for a clean install."), 409
+            mod_job.update(running=True, message="Downloading a clean copy of the mod set…")
+            Thread(target=install_mod_set, args=(plan, False), daemon=True).start()
+            return jsonify(message=mod_job["message"]), 202
         if action in ("install", "save_set") and mod_plan and data.get("plan") == mod_plan["id"] and not mod_plan["problems"]:
             try:
                 selected = server_mods.selected_set(DATA_DIR)

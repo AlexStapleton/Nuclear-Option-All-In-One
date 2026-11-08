@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, build_opener
+from uuid import uuid4
 
 import workshop
 
@@ -342,7 +343,8 @@ def saved_sets(data_dir):
                 pins = plan.get("pins", {})
                 versions = [{"name": asset["name"], "version": asset["version"], "pinned": asset.get("id") in pins}
                             for asset in plan["assets"]]
-                sets.append({"id": plan["id"], "title": plan["title"], "versions": versions})
+                sets.append({"id": plan["id"], "title": plan["title"], "versions": versions,
+                             "clean_copy": plan.get("clean_copy", False)})
         except (OSError, ValueError, KeyError, TypeError):
             continue
     return sorted(sets, key=lambda item: (item["title"].casefold(), item["id"]))
@@ -353,6 +355,14 @@ def activate_saved_set(data_dir, key):
     if not read_set(root, key) or not loader_ready(root / key):
         raise ValueError("That saved mod set is unavailable.")
     select_set(data_dir, key)
+
+
+def clean_copy_plan(data_dir, key):
+    plan = read_set(mod_root(data_dir), key)
+    if not plan or plan.get("problems") or not plan.get("assets"):
+        raise ValueError("That saved mod set is unavailable for a clean install.")
+    # An independent directory also keeps the old settings and caches available for rollback.
+    return {**plan, "id": uuid4().hex, "problems": [], "clean_copy": True}
 
 
 def select_set(data_dir, key):
