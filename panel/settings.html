@@ -14,25 +14,19 @@
             <div>
                 <p class="eyebrow">Server administration</p>
                 <h1>Settings &amp; missions</h1>
-                <p class="meta">Set server access, plan the rotation, or queue a mission for the next round.</p>
+                <p class="meta">Manage the mission rotation and server settings.</p>
             </div>
+            <div class="actions settings-jump"><a href="#picker-title">Add missions</a><a href="#server-settings">Server settings</a></div>
         </header>
-        <p role="status" id="status" class="settings-feedback"></p>
-        <div class="settings-layout">
-            <section class="card" aria-labelledby="configuration-title">
-                <h2 id="configuration-title">Saved configuration</h2>
-                <label class="field">Server name <input id="server-name" required></label>
-                <label class="field">Game join password
-                    <select id="password-mode">
-                        <option value="keep">Keep current setting</option>
-                        <option value="set">Set a password</option>
-                        <option value="clear">Remove password</option>
-                    </select>
-                    <span class="meta" id="password-state"></span>
-                </label>
-                <div id="new-password-field" hidden>
-                    <label class="field">New join password <input id="new-password" type="password" autocomplete="new-password"></label>
+        <div class="settings-layout mission-workspace">
+            <section class="card mission" id="mission-rotation" aria-labelledby="rotation-title"
+                     data-switch-url="{{ url_for('switch_mission') }}" data-queue-url="{{ url_for('queue_mission') }}">
+                <div class="card-heading">
+                    <h2 id="rotation-title">Mission rotation</h2>
+                    <button type="button" id="save" class="primary">Save rotation</button>
                 </div>
+                <p class="meta">Queue a mission for the next round or switch to it now. Save the rotation to keep changes to its order or time limits.</p>
+                <p role="status" id="status" class="settings-feedback"></p>
                 <label class="field">Rotation order
                     <select id="rotation-type">
                         <option value="0">In order</option>
@@ -40,12 +34,11 @@
                         <option value="2">Shuffle (play each before repeating)</option>
                     </select>
                 </label>
-                <h3>Mission rotation</h3>
+                <p id="rotation-empty" class="meta" hidden>Use Add missions to build your rotation.</p>
                 <ol id="rotation" class="rotation-list" aria-label="Mission rotation"></ol>
-                <button type="button" id="save" class="primary">Save and reload</button>
             </section>
             <section class="card" aria-labelledby="picker-title">
-                <h2 id="picker-title">Choose a mission</h2>
+                <h2 id="picker-title">Add missions</h2>
                 <label class="field">Mission picker
                     <select id="preset">
                         <option value="">Enter a mission name or Workshop link</option>
@@ -62,16 +55,17 @@
                 </label>
                 <div class="mission-fields">
                     <label class="field">Group <select id="group">
-                        {% for group in groups %}<option value="{{ group }}">{{ group }}</option>{% endfor %}
+                        {% for group in groups %}<option value="{{ group }}">{{ {'BuiltIn': 'Built-in', 'User': 'Local scenario'}.get(group, group) }}</option>{% endfor %}
                     </select></label>
                     <label class="field">Time limit (seconds) <input id="mission-time" type="number" min="1" step="any" value="7200"></label>
                 </div>
                 <label class="field">Name, Workshop ID or link <input id="mission-name" required></label>
                 <div class="actions">
                     <button type="button" id="add">Add to rotation</button>
-                    <button type="button" id="next">Queue as next mission</button>
-                    <button type="button" id="switch-mission" data-url="{{ url_for('switch_mission') }}">Switch mission now</button>
+                    <button type="button" id="next">Queue once</button>
                 </div>
+                <p role="status" id="picker-status" class="settings-feedback"></p>
+                <p class="meta">Workshop entries save immediately so Steam can download them.</p>
                 <div id="workshop-controls" data-url="{{ url_for('check_workshop') }}" hidden>
                     <p class="meta" id="workshop-status" role="status"></p>
                     <p class="meta" id="workshop-details" role="status"></p>
@@ -86,69 +80,85 @@
                     </section>
                 </div>
                 <p class="meta"><a href="https://steamcommunity.com/app/2168680/workshop/" target="_blank" rel="noopener">Browse the Nuclear Option Workshop</a>, then paste an item link here.</p>
-                <p class="meta"><a href="#import-heading">Import and edit a local mission</a>.</p>
+                <details class="mission-source">
+                    <summary id="import-heading">Import a mission file</summary>
+                    <p class="meta">Choose a mission JSON or a ZIP of one mission folder saved in the game. For multiplayer, use a mission saved with multiplayer enabled.</p>
+                    <form id="mission-import" data-url="{{ url_for('import_mission') }}">
+                        <label class="field">Mission file <input id="mission-upload" name="mission" type="file" accept=".json,.zip" required></label>
+                        <button type="submit">Open mission</button>
+                    </form>
+                    <form id="mission-copy" hidden>
+                        <label class="field">New mission name <input id="copy-name" required></label>
+                        {% for key, (_, label, kind) in mission_fields.items() %}
+                        <label class="field import-field{% if kind == 'checkbox' %} import-checkbox{% endif %}" hidden>
+                            {{ label }}
+                            {% if kind == 'textarea' %}
+                            <textarea data-mission-field="{{ key }}" rows="4"></textarea>
+                            {% else %}
+                            <input data-mission-field="{{ key }}" type="{{ kind }}"{% if kind == 'number' %} step="any"{% endif %}>
+                            {% endif %}
+                        </label>
+                        {% endfor %}
+                        <button type="submit" class="primary">Save as copy</button>
+                    </form>
+                    <p id="import-status" class="meta command-status" role="status"></p>
+                    <a href="#add" id="use-saved-mission" hidden>Go to Add to rotation</a>
+                </details>
             </section>
         </div>
-        <section class="card mission-import" aria-labelledby="server-options-title">
+        <section class="card server-configuration" id="server-settings" aria-labelledby="server-options-title">
             <div class="card-heading">
-                <h2 id="server-options-title">Server options</h2>
-                <button type="button" id="save-options" class="primary">Save and reload</button>
+                <h2 id="server-options-title">Server settings</h2>
+                <button type="button" id="save-options" class="primary">Save server settings</button>
             </div>
+            <p id="options-status" class="settings-feedback" role="status"></p>
             <div class="settings-layout">
-                {% for title, fields in option_sections.items() %}
-                <details class="card"{% if loop.first %} open{% endif %}>
-                    <summary>{{ title }}</summary>
-                    {% if title == 'UDP ports' %}
-                    <p class="meta">Leave an override empty to use the default. After saving a port change, run <code>sh start.sh</code> on the Linux host to update Docker. Match the new ports in your router and firewall.</p>
-                    {% elif title == 'Server and timing' %}
-                    <p class="meta">Use a mission directory under <code>/server</code>. Move existing mission folders there before switching directories.</p>
-                    {% endif %}
-                    {% for key, (label, kind, default, minimum, maximum) in fields.items() %}
-                    {% set value = option_values[key] %}
-                    {% if kind == 'checkbox' %}
-                    <label class="option-check"><input data-server-option="{{ key }}" data-kind="{{ kind }}" type="checkbox"{% if value is sameas true %} checked{% endif %}> {{ label }}</label>
-                    {% else %}
-                    <label class="field">{{ label }}
-                        {% if kind == 'lines' %}
-                        <textarea data-server-option="{{ key }}" data-kind="{{ kind }}" rows="2">{{ '\n' }}{{ value }}</textarea>
-                        {% elif kind == 'text' %}
-                        <input data-server-option="{{ key }}" data-kind="{{ kind }}" value="{{ value if value is not none else '' }}">
-                        {% else %}
-                        <input data-server-option="{{ key }}" data-kind="{{ kind }}" type="number" step="{{ 'any' if kind == 'number' else '1' }}"
-                               {% if minimum is not none %}min="{{ minimum }}"{% endif %}{% if maximum is not none %} max="{{ maximum }}"{% endif %}
-                               value="{{ value if value is not none else '' }}">
-                        {% endif %}
-                    </label>
-                    {% endif %}
-                    {% endfor %}
-                </details>
-                {% endfor %}
-            </div>
-            <p id="options-status" class="meta command-status" role="status"></p>
-        </section>
-        <section class="card mission-import" aria-labelledby="import-heading">
-            <h2 id="import-heading">Import a custom mission</h2>
-            <p class="meta">Choose a mission JSON or a ZIP of one mission folder saved in the game. For multiplayer, use a mission saved with multiplayer enabled.</p>
-            <form id="mission-import" data-url="{{ url_for('import_mission') }}">
-                <label class="field">Mission file <input id="mission-upload" name="mission" type="file" accept=".json,.zip" required></label>
-                <button type="submit">Open mission</button>
-            </form>
-            <form id="mission-copy" hidden>
-                <label class="field">New mission name <input id="copy-name" required></label>
-                {% for key, (_, label, kind) in mission_fields.items() %}
-                <label class="field import-field{% if kind == 'checkbox' %} import-checkbox{% endif %}" hidden>
-                    {{ label }}
-                    {% if kind == 'textarea' %}
-                    <textarea data-mission-field="{{ key }}" rows="4"></textarea>
-                    {% else %}
-                    <input data-mission-field="{{ key }}" type="{{ kind }}"{% if kind == 'number' %} step="any"{% endif %}>
-                    {% endif %}
+                <label class="field">Server name <input id="server-name" required></label>
+                <label class="field">Game join password
+                    <select id="password-mode">
+                        <option value="keep">Keep current setting</option>
+                        <option value="set">Set a password</option>
+                        <option value="clear">Remove password</option>
+                    </select>
+                    <span class="meta" id="password-state"></span>
                 </label>
-                {% endfor %}
-                <button type="submit" class="primary">Save as copy</button>
-            </form>
-            <p id="import-status" class="meta command-status" role="status"></p>
-            <a href="#picker-title" id="use-saved-mission" hidden>Queue this mission or add it to the rotation</a>
+                <div id="new-password-field" hidden>
+                    <label class="field">New join password <input id="new-password" type="password" autocomplete="new-password"></label>
+                </div>
+            </div>
+            <details class="mission-source" id="advanced-server-options">
+                <summary>Advanced server options</summary>
+                <div class="settings-layout">
+                    {% for title, fields in option_sections.items() %}
+                    <details class="card">
+                        <summary>{{ title }}</summary>
+                        {% if title == 'UDP ports' %}
+                        <p class="meta">Leave an override empty to use the default. After saving a port change, run <code>sh start.sh</code> on the Linux host to update Docker. Match the new ports in your router and firewall.</p>
+                        {% elif title == 'Server and timing' %}
+                        <p class="meta">Use a mission directory under <code>/server</code>. Move existing mission folders there before switching directories.</p>
+                        {% endif %}
+                        {% for key, (label, kind, default, minimum, maximum) in fields.items() %}
+                        {% set value = option_values[key] %}
+                        {% if kind == 'checkbox' %}
+                        <label class="option-check"><input data-server-option="{{ key }}" data-kind="{{ kind }}" type="checkbox"{% if value is sameas true %} checked{% endif %}> {{ label }}</label>
+                        {% else %}
+                        <label class="field">{{ label }}
+                            {% if kind == 'lines' %}
+                            <textarea data-server-option="{{ key }}" data-kind="{{ kind }}" rows="2">{{ '\n' }}{{ value }}</textarea>
+                            {% elif kind == 'text' %}
+                            <input data-server-option="{{ key }}" data-kind="{{ kind }}" value="{{ value if value is not none else '' }}">
+                            {% else %}
+                            <input data-server-option="{{ key }}" data-kind="{{ kind }}" type="number" step="{{ 'any' if kind == 'number' else '1' }}"
+                                   {% if minimum is not none %}min="{{ minimum }}"{% endif %}{% if maximum is not none %} max="{{ maximum }}"{% endif %}
+                                   value="{{ value if value is not none else '' }}">
+                            {% endif %}
+                        </label>
+                        {% endif %}
+                        {% endfor %}
+                    </details>
+                    {% endfor %}
+                </div>
+            </details>
         </section>
         <dialog class="card action-dialog" id="switch-mission-dialog" aria-labelledby="switch-mission-title" aria-describedby="switch-mission-help">
             <form method="dialog">
@@ -165,6 +175,7 @@
         const initial = {{ initial | tojson }};
         const byId = (id) => document.getElementById(id);
         const rotation = Array.isArray(initial.missions) ? initial.missions : [];
+        const openRotationEdits = new WeakSet();
         const workshopTitles = new Map(Object.entries(initial.workshop_titles));
         let revision = initial.revision;
         byId('server-name').value = initial.name;
@@ -196,23 +207,46 @@
         }
 
         function showRotation() {
+            byId('rotation-empty').hidden = rotation.length > 0;
             byId('rotation').replaceChildren(...rotation.map((mission, index) => {
                 const item = document.createElement('li');
                 const title = document.createElement('strong');
+                title.id = `rotation-mission-${index}`;
                 const name = mission.Key?.Name;
                 if (mission.Key?.Group === 'Workshop') title.dataset.workshopTitle = name;
                 title.textContent = (mission.Key?.Group === 'Workshop' && workshopTitles.get(name)) || name || 'Unnamed mission';
                 const group = document.createElement('span');
                 group.className = 'meta';
-                group.textContent = mission.Key?.Group ?? 'Unknown group';
+                const groupName = ({BuiltIn: 'Built-in', User: 'Local scenario'})[mission.Key?.Group] || mission.Key?.Group || 'Unknown group';
+                const showDuration = () => {
+                    group.textContent = `${groupName} · ${Number.isFinite(mission.MaxTime ?? 7200) ? `${mission.MaxTime ?? 7200}s` : 'Enter a time limit'}`;
+                };
+                showDuration();
+                const identity = document.createElement('div');
+                identity.className = 'rotation-mission';
+                identity.append(title, group);
+                const queue = action('Queue next', (event) => queueRotationMission(event.currentTarget, mission));
+                const switchNow = action('Switch now', (event) => reviewMissionSwitch(event.currentTarget, mission));
+                switchNow.className = 'switch-now';
+                for (const button of [queue, switchNow]) {
+                    button.dataset.missionAction = '';
+                    button.setAttribute('aria-describedby', title.id);
+                    button.disabled = byId('mission-rotation').dataset.busy === 'true';
+                }
+                const play = document.createElement('div');
+                play.className = 'actions rotation-play';
+                play.append(queue, switchNow);
+                const heading = document.createElement('div');
+                heading.className = 'rotation-row';
+                heading.append(identity, play);
                 const label = document.createElement('label');
-                label.textContent = 'Seconds';
+                label.textContent = 'Time limit (seconds)';
                 const seconds = document.createElement('input');
                 seconds.type = 'number';
                 seconds.min = '1';
                 seconds.step = 'any';
                 seconds.value = mission.MaxTime ?? 7200;
-                seconds.addEventListener('input', () => { mission.MaxTime = seconds.valueAsNumber; });
+                seconds.addEventListener('input', () => { mission.MaxTime = seconds.valueAsNumber; showDuration(); });
                 label.append(seconds);
                 const controls = document.createElement('div');
                 controls.className = 'actions';
@@ -220,7 +254,16 @@
                     action('Up', () => move(index, -1), index === 0),
                     action('Down', () => move(index, 1), index === rotation.length - 1),
                     action('Remove', () => { rotation.splice(index, 1); showRotation(); }));
-                item.append(title, group, controls);
+                const edit = document.createElement('details');
+                edit.open = openRotationEdits.has(mission);
+                edit.addEventListener('toggle', () => {
+                    if (edit.open) openRotationEdits.add(mission);
+                    else openRotationEdits.delete(mission);
+                });
+                const summary = document.createElement('summary');
+                summary.textContent = 'Edit rotation entry';
+                edit.append(summary, controls);
+                item.append(heading, edit);
                 return item;
             }));
         }
@@ -230,17 +273,17 @@
                     MaxTime: byId('mission-time').valueAsNumber};
         }
 
-        async function send(button, url, data) {
+        async function send(button, url, data, status = byId('status')) {
             button.disabled = true;
             try {
                 const response = await panelFetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
                                                     body: JSON.stringify(data)});
                 const result = await response.json();
-                byId('status').textContent = result.message;
+                status.textContent = result.message;
                 if (response.ok && result.revision) revision = result.revision;
                 if (response.ok) return result;
             } catch {
-                byId('status').textContent = 'The panel did not return a response. Refresh and check the saved settings.';
+                status.textContent = 'The panel did not return a response. Check the server before retrying.';
             } finally {
                 button.disabled = false;
             }
@@ -254,7 +297,7 @@
         byId('add').addEventListener('click', () => {
             const mission = selectedMission();
             if (!mission.Key.Name || !(mission.MaxTime > 0)) {
-                byId('status').textContent = 'Enter a mission name and a positive time limit.';
+                byId('picker-status').textContent = 'Enter a mission name and a positive time limit.';
                 return;
             }
             if (mission.Key.Group === 'Workshop') {
@@ -263,27 +306,27 @@
             }
             rotation.push(mission);
             showRotation();
-            byId('status').textContent = 'Mission added. Save and reload to apply the rotation.';
+            byId('picker-status').textContent = 'Mission added. Choose Save rotation to keep it in the rotation.';
         });
         byId('password-mode').addEventListener('change', updatePasswordField);
-        async function saveSettings(event) {
+        async function saveRotation(event) {
+            await sendMissionControl(event.currentTarget, '/settings', {
+                section: 'rotation', rotation_type: Number(byId('rotation-type').value), missions: rotation, revision,
+            });
+        }
+        async function saveServerSettings(event) {
             const mode = byId('password-mode');
             const password = byId('new-password');
-            const optionButton = byId('save-options');
-            const saveButton = byId('save');
             const options = serverOptionEdits();
             if (!options) return;
-            const peer = event.currentTarget === optionButton ? saveButton : optionButton;
-            peer.disabled = true;
+            if (!byId('server-name').reportValidity()) return;
             mode.disabled = password.disabled = true;
             try {
-                const result = await send(event.currentTarget, '/settings', {
-                    name: byId('server-name').value, rotation_type: Number(byId('rotation-type').value),
-                    missions: rotation, revision, password_mode: mode.value,
+                const result = await sendMissionControl(event.currentTarget, '/settings', {
+                    section: 'server', name: byId('server-name').value, revision, password_mode: mode.value,
                     options,
                     ...(mode.value === 'set' && {password: password.value}),
-                });
-                byId('options-status').textContent = byId('status').textContent;
+                }, byId('options-status'));
                 if (result) {
                     password.value = '';
                     mode.value = 'keep';
@@ -292,15 +335,15 @@
                     document.dispatchEvent(new CustomEvent('settings-saved', {detail: {result, options}}));
                 }
             } finally {
-                peer.disabled = mode.disabled = password.disabled = false;
+                mode.disabled = password.disabled = false;
             }
         }
-        byId('save').addEventListener('click', saveSettings);
-        byId('save-options').addEventListener('click', saveSettings);
+        byId('save').addEventListener('click', saveRotation);
+        byId('save-options').addEventListener('click', saveServerSettings);
         byId('next').addEventListener('click', (event) => {
             const mission = selectedMission();
             if (mission.Key.Group === 'Workshop') handleWorkshopAction(event.currentTarget, mission, true);
-            else send(event.currentTarget, '/settings/next', mission);
+            else queueRotationMission(event.currentTarget, mission, byId('picker-status'));
         });
         showRotation();
         showPasswordState(initial.password_set);

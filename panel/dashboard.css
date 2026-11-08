@@ -86,13 +86,19 @@ footer { padding-block: 1.2rem 2rem; }
 .settings-layout .card > .meta { margin-top: .75rem; }
 .settings-feedback:not(:empty) { margin: 0 0 1rem; padding: .75rem 1rem; border-left: 3px solid var(--accent); background: var(--panel); }
 .settings-feedback:empty { margin: 0; }
-.mission-import { margin-top: 1rem; }
-.mission-import form { max-width: 40rem; }
-.mission-import .field { display: grid; gap: .35rem; margin-bottom: .85rem; }
-.mission-import .import-checkbox { display: flex; gap: .5rem; align-items: center; }
+.actions.settings-jump { gap: .6rem 1rem; }
+.mission-workspace { grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); }
+.mission-workspace .card-heading .primary, .server-configuration .card-heading .primary { margin-top: 0; }
+.mission-workspace .settings-feedback:not(:empty) { margin: .65rem 0; background: #0d1721; }
+.mission-source { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid var(--line); }
+.mission-source summary { cursor: pointer; font-weight: 700; }
+.mission-source[open] > summary { margin-bottom: .7rem; }
+.mission-source .import-checkbox { display: flex; align-items: center; gap: .5rem; }
+.server-configuration { margin-top: 1rem; }
+.server-configuration .option-check { display: flex; align-items: center; gap: .5rem; margin: .75rem 0; }
+#rotation-type { max-width: 21rem; }
+#mission-rotation > .field { margin-top: .9rem; }
 .import-checkbox input { width: auto; accent-color: var(--accent); }
-.mission-import summary { cursor: pointer; font-weight: 700; margin-bottom: .65rem; }
-.mission-import .option-check { display: flex; gap: .5rem; align-items: center; margin: .75rem 0; }
 .option-check input { width: auto; accent-color: var(--accent); }
 #workshop-controls { margin-top: .85rem; }
 #workshop-controls button { margin-top: .5rem; }
@@ -127,8 +133,14 @@ footer { padding-block: 1.2rem 2rem; }
 .mission-fields { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
 .rotation-list { padding-left: 1.25rem; margin: 0; }
 .rotation-list li { border-top: 1px solid var(--line); padding: .75rem 0; }
-.rotation-list strong { margin-right: .5rem; overflow-wrap: anywhere; }
-.rotation-list .actions { margin-top: .5rem; }
+.rotation-list strong { display: block; overflow-wrap: anywhere; }
+.rotation-row { display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: .4rem .8rem; }
+.rotation-mission { min-width: 0; flex: 1 1 12rem; }
+.rotation-list details { margin-top: .4rem; }
+.rotation-list summary { width: fit-content; cursor: pointer; color: var(--muted); font-size: .85rem; }
+.rotation-list details .actions { margin-top: .5rem; }
+.rotation-play button { padding: .35rem .55rem; font-size: .85rem; }
+.rotation-play .switch-now { border-color: var(--accent); color: var(--accent); }
 .rotation-list label { display: flex; gap: .4rem; align-items: center; margin: 0; font-size: .9rem; }
 .rotation-list input { width: 6rem; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }

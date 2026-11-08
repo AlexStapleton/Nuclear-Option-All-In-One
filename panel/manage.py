@@ -217,23 +217,32 @@ def save_settings():
     try:
         if not isinstance(data, dict):
             raise ValueError("Expected a settings object.")
-        name = data.get("name")
-        rotation_type = data.get("rotation_type")
-        missions = data.get("missions")
-        password_mode = data.get("password_mode", "keep")
-        password = data.get("password")
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError("Enter a server name.")
-        if type(rotation_type) is not int or rotation_type not in (0, 1, 2):
-            raise ValueError("Choose a rotation order.")
-        if not isinstance(missions, list) or not missions:
-            raise ValueError("Add at least one mission to the rotation.")
-        if password_mode not in ("keep", "set", "clear"):
-            raise ValueError("Choose how to handle the join password.")
-        if password_mode == "set" and (not isinstance(password, str) or not password.strip()
-                                       or any(char in password for char in "\r\n\0")):
-            raise ValueError("Enter a join password on a single line.")
-        rotation = [parse_mission(mission) for mission in missions]
+        section = data.get("section", "all")
+        if section not in ("all", "rotation", "server"):
+            raise ValueError("Choose which settings to save.")
+        changes = {}
+        if section != "server":
+            rotation_type = data.get("rotation_type")
+            missions = data.get("missions")
+            if type(rotation_type) is not int or rotation_type not in (0, 1, 2):
+                raise ValueError("Choose a rotation order.")
+            if not isinstance(missions, list) or not missions:
+                raise ValueError("Add at least one mission to the rotation.")
+            changes.update(RotationType=rotation_type, MissionRotation=[parse_mission(mission) for mission in missions])
+        if section != "rotation":
+            name = data.get("name")
+            password_mode = data.get("password_mode", "keep")
+            password = data.get("password")
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("Enter a server name.")
+            if password_mode not in ("keep", "set", "clear"):
+                raise ValueError("Choose how to handle the join password.")
+            if password_mode == "set" and (not isinstance(password, str) or not password.strip()
+                                           or any(char in password for char in "\r\n\0")):
+                raise ValueError("Enter a join password on a single line.")
+            changes["ServerName"] = name.strip()
+            if password_mode != "keep":
+                changes["Password"] = password if password_mode == "set" else ""
     except ValueError as error:
         return jsonify(message=str(error)), 400
 
@@ -242,11 +251,10 @@ def save_settings():
             settings, revision = read_config()
             if revision != data.get("revision"):
                 return jsonify(message="The config changed. Refresh this page before saving."), 409
-            settings.update(ServerName=name.strip(), RotationType=rotation_type, MissionRotation=rotation)
-            if password_mode != "keep":
-                settings["Password"] = password if password_mode == "set" else ""
+            settings.update(changes)
             try:
-                ports = server_options.apply_options(settings, data.get("options", {}), DATA_DIR)
+                ports = (server_options.effective_ports(settings) if section == "rotation"
+                         else server_options.apply_options(settings, data.get("options", {}), DATA_DIR))
             except ValueError as error:
                 return jsonify(message=str(error)), 400
             revision = write_config(settings)
@@ -255,7 +263,8 @@ def save_settings():
                 message = "Saved. Run sh start.sh on the Linux host to apply the UDP ports and reload the settings."
             else:
                 status, _ = server_commands.reload_config(create_remote_commander(), str(CONFIG_PATH))
-                message = "Saved and reloaded. Restart the server if the game browser still shows the previous settings."
+                message = ("Rotation saved and reloaded." if section == "rotation"
+                           else "Saved and reloaded. Restart the server if the game browser still shows the previous settings.")
                 if status != "Success":
                     message = f"Saved. Reload returned {status}. Run sh start.sh or restart the game server to apply the changes."
         except (OSError, ValueError):

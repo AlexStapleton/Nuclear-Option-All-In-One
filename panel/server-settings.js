@@ -12,6 +12,7 @@ function serverOptionEdits() {
             if (!input.validity.valid || (kind !== 'port' && value === '')) {
                 const section = input.closest('details');
                 section.open = true;
+                byId('advanced-server-options').open = true;
                 input.reportValidity();
                 byId('options-status').textContent = 'Enter a valid value for each server option you changed.';
                 input.focus();
@@ -107,6 +108,7 @@ async function refreshWorkshop(lookup = false) {
     if (isWorkshopLink(value)) byId('group').value = 'Workshop';
     const selected = byId('group').value === 'Workshop';
     workshopControls.hidden = !selected;
+    byId('next').textContent = selected ? 'Add and queue' : 'Queue once';
     if (value !== inspectedItem) {
         inspectedItem = value;
         incompatibleItem = '';
@@ -141,14 +143,18 @@ async function refreshWorkshop(lookup = false) {
         const pending = pendingWorkshopQueue;
         if (pending && item.id === pending.mission.Key.Name) {
             if (item.state === 'cached') {
+                if (missionWorkspace.dataset.busy === 'true') {
+                    workshopTimer = setTimeout(refreshWorkshop, 1000);
+                    return;
+                }
                 clearPendingWorkshopQueue();
-                await send(byId('next'), '/settings/next', pending.mission);
+                await sendMissionControl(byId('next'), missionWorkspace.dataset.queueUrl, pending.mission, byId('picker-status'));
                 return;
             }
             if (item.state !== 'waiting' || Date.now() >= pending.until) {
                 clearPendingWorkshopQueue();
-                byId('status').textContent = item.state === 'waiting'
-                    ? 'The Workshop mission is saved. Once the download finishes, click Queue as next mission again.'
+                byId('picker-status').textContent = item.state === 'waiting'
+                    ? 'The Workshop mission is saved. Once the download finishes, choose Queue next on its rotation row.'
                     : item.message;
             } else {
                 workshopStatusText.textContent = 'Saved in the rotation. Keep this page open to queue it when the download finishes.';
@@ -163,7 +169,7 @@ async function refreshWorkshop(lookup = false) {
             workshopTimer = setTimeout(refreshWorkshop, 5000);
         } else if (pendingWorkshopQueue) {
             clearPendingWorkshopQueue();
-            byId('status').textContent = 'The Workshop mission is saved. Check the download and try queueing it again.';
+            byId('picker-status').textContent = 'The Workshop mission is saved. Check the download and try queueing it again.';
         }
     } finally {
         if (request === workshopRequest) workshopCheckButton.disabled = false;
@@ -173,7 +179,7 @@ async function refreshWorkshop(lookup = false) {
 function workshopInputChanged() {
     if (pendingWorkshopQueue) {
         clearPendingWorkshopQueue();
-        byId('status').textContent = 'Automatic queue canceled. The Workshop mission is saved in the rotation.';
+        byId('picker-status').textContent = 'Automatic queue canceled. The Workshop mission is saved in the rotation.';
     }
     clearTimeout(workshopTimer);
     workshopRequest += 1;
@@ -182,6 +188,7 @@ function workshopInputChanged() {
     }
     if (isWorkshopLink(byId('mission-name').value.trim())) byId('group').value = 'Workshop';
     workshopControls.hidden = byId('group').value !== 'Workshop';
+    byId('next').textContent = workshopControls.hidden ? 'Queue once' : 'Add and queue';
     workshopTimer = setTimeout(refreshWorkshop, 250);
 }
 
@@ -191,24 +198,18 @@ function clearPendingWorkshopQueue() {
 }
 
 async function handleWorkshopAction(button, mission, queue) {
+    const status = byId('picker-status');
     if (incompatibleItem && mission.Key.Name === incompatibleItem) {
-        byId('status').textContent = workshopDetailsText.textContent;
+        status.textContent = workshopDetailsText.textContent;
         return;
     }
+    if (missionWorkspace.dataset.busy === 'true') return;
     clearPendingWorkshopQueue();
-    const otherButtons = ['save', 'save-options', 'switch-mission', queue ? 'add' : 'next'].map(byId);
-    if (otherButtons.some((control) => control.disabled)) return;
-    otherButtons.forEach((control) => { control.disabled = true; });
-    byId('status').textContent = 'Saving the Workshop mission…';
+    status.textContent = 'Saving the Workshop mission…';
     const selection = JSON.stringify(mission);
-    let result;
-    try {
-        result = await send(button, '/settings/workshop', {mission, revision});
-    } finally {
-        otherButtons.forEach((control) => { control.disabled = false; });
-    }
+    const result = await sendMissionControl(button, '/settings/workshop', {mission, revision}, status);
     if (!result) {
-        if (selection === JSON.stringify(selectedMission())) workshopStatusText.textContent = byId('status').textContent;
+        if (selection === JSON.stringify(selectedMission())) workshopStatusText.textContent = status.textContent;
         return;
     }
 
@@ -221,53 +222,71 @@ async function handleWorkshopAction(button, mission, queue) {
     if (selection !== JSON.stringify(selectedMission())) return;
     workshopStatusText.textContent = result.message;
     if (queue && result.state === 'cached') {
-        await send(button, '/settings/next', saved);
+        await sendMissionControl(button, missionWorkspace.dataset.queueUrl, saved, status);
     } else if (result.state === 'waiting') {
         if (queue) {
             pendingWorkshopQueue = {mission: saved, until: Date.now() + 120000};
             cancelWorkshopQueue.hidden = false;
-            byId('status').textContent = 'Saved to the rotation. Keep this page open to queue it when the download finishes.';
+            status.textContent = 'Saved to the rotation. Keep this page open to queue it when the download finishes.';
         }
         refreshWorkshop();
     }
 }
 
-const switchButton = byId('switch-mission');
+const missionWorkspace = byId('mission-rotation');
 const switchDialog = byId('switch-mission-dialog');
-const missionControls = ['add', 'next', 'save', 'save-options'].map(byId);
 let switchTarget;
 
-switchButton.addEventListener('click', () => {
-    if (missionControls.some(control => control.disabled)) return;
-    const mission = selectedMission();
-    if (!byId('mission-name').reportValidity() || !byId('mission-time').reportValidity()) return;
-    if (!mission.Key.Name || !(mission.MaxTime > 0)) {
-        byId('status').textContent = 'Enter a mission name and a positive time limit.';
-        return;
+function missionControlButtons() {
+    return [...['add', 'next', 'save', 'save-options'].map(byId), ...missionWorkspace.querySelectorAll('[data-mission-action]')];
+}
+
+async function sendMissionControl(button, url, payload, status) {
+    if (missionWorkspace.dataset.busy === 'true') return;
+    missionWorkspace.dataset.busy = 'true';
+    missionControlButtons().forEach(control => { control.disabled = true; });
+    try {
+        return await send(button, url, payload, status);
+    } finally {
+        delete missionWorkspace.dataset.busy;
+        missionControlButtons().forEach(control => { control.disabled = false; });
+    }
+}
+
+function validMissionAction(mission, status) {
+    if (!mission.Key?.Name || !Number.isFinite(mission.MaxTime ?? 7200) || (mission.MaxTime ?? 7200) <= 0) {
+        status.textContent = 'Enter a mission name and a positive time limit.';
+        return false;
     }
     if (mission.Key.Group === 'Workshop' && mission.Key.Name === incompatibleItem) {
-        byId('status').textContent = workshopDetailsText.textContent;
-        return;
+        status.textContent = workshopDetailsText.textContent;
+        return false;
     }
+    return true;
+}
+
+function queueRotationMission(button, mission, status = byId('status')) {
+    if (missionWorkspace.dataset.busy === 'true' || !validMissionAction(mission, status)) return;
+    clearPendingWorkshopQueue();
+    return sendMissionControl(button, missionWorkspace.dataset.queueUrl, mission, status);
+}
+
+function reviewMissionSwitch(button, mission) {
+    if (missionWorkspace.dataset.busy === 'true' || !validMissionAction(mission, byId('status'))) return;
     const name = (mission.Key.Group === 'Workshop' && workshopTitles.get(mission.Key.Name)) || mission.Key.Name;
     byId('switch-mission-help').textContent = `End the current mission and load ${name} next? The server’s normal delay between missions applies.`;
-    switchTarget = mission;
+    switchTarget = {button, mission: {...mission, Key: {...mission.Key}}};
     switchDialog.returnValue = '';
     switchDialog.showModal();
-});
+}
 
-switchDialog.addEventListener('close', async () => {
-    const mission = switchTarget;
+switchDialog.addEventListener('close', () => {
+    const target = switchTarget;
     switchTarget = undefined;
-    if (!mission || switchDialog.returnValue !== 'confirm' || missionControls.some(control => control.disabled)) return;
+    if (!target || switchDialog.returnValue !== 'confirm' || missionWorkspace.dataset.busy === 'true') return;
     clearPendingWorkshopQueue();
-    missionControls.forEach(control => { control.disabled = true; });
     byId('status').textContent = 'Requesting a mission switch…';
-    try {
-        await send(switchButton, switchButton.dataset.url, mission);
-    } finally {
-        missionControls.forEach(control => { control.disabled = false; });
-    }
+    sendMissionControl(target.button, missionWorkspace.dataset.switchUrl, target.mission);
 });
 
 function updateMissionOptions(id, group, items) {
@@ -289,7 +308,7 @@ byId('group').addEventListener('change', workshopInputChanged);
 byId('preset').addEventListener('change', workshopInputChanged);
 cancelWorkshopQueue.addEventListener('click', () => {
     clearPendingWorkshopQueue();
-    byId('status').textContent = 'Automatic queue canceled. The Workshop mission is saved in the rotation.';
+    byId('picker-status').textContent = 'Automatic queue canceled. The Workshop mission is saved in the rotation.';
     refreshWorkshop();
 });
 workshopCheckButton.addEventListener('click', () => refreshWorkshop(true));

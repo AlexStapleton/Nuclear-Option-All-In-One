@@ -29,7 +29,7 @@ Open the web panel from any device on your LAN. For your first sign-in, enter `a
 
 ![Overview showing mission progress, player roster, and the announcement form](docs/screenshots/overview.jpg)
 
-**Settings & missions** shows the rotation, Workshop download status, server options, and local mission import.
+**Settings & missions** puts queue and switch controls on the rotation rows, groups imports with mission sources, and gives server settings their own save button.
 
 ![Settings and missions showing the rotation, a Workshop item found in the cache, server options, and the import form](docs/screenshots/settings-and-missions.jpg)
 
