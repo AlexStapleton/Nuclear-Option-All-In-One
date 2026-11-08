@@ -75,6 +75,7 @@
                     <p class="meta" id="workshop-status" role="status"></p>
                     <p class="meta" id="workshop-details" role="status"></p>
                     <button type="button" id="check-workshop">Check item on Steam</button>
+                    <button type="button" id="cancel-workshop-queue" hidden>Cancel automatic queue</button>
                 </div>
                 <p class="meta"><a href="https://steamcommunity.com/app/2168680/workshop/" target="_blank" rel="noopener">Browse the Nuclear Option Workshop</a>, then paste an item link here.</p>
                 <p class="meta"><a href="#import-heading">Import and edit a local mission</a>.</p>
@@ -146,6 +147,7 @@
         const initial = {{ initial | tojson }};
         const byId = (id) => document.getElementById(id);
         const rotation = Array.isArray(initial.missions) ? initial.missions : [];
+        const workshopTitles = new Map();
         let revision = initial.revision;
         byId('server-name').value = initial.name;
         byId('rotation-type').value = initial.rotation_type;
@@ -179,7 +181,8 @@
             byId('rotation').replaceChildren(...rotation.map((mission, index) => {
                 const item = document.createElement('li');
                 const title = document.createElement('strong');
-                title.textContent = mission.Key?.Name ?? 'Unnamed mission';
+                const name = mission.Key?.Name;
+                title.textContent = (mission.Key?.Group === 'Workshop' && workshopTitles.get(name)) || name || 'Unnamed mission';
                 const group = document.createElement('span');
                 group.className = 'meta';
                 group.textContent = mission.Key?.Group ?? 'Unknown group';
@@ -235,6 +238,10 @@
                 byId('status').textContent = 'Enter a mission name and a positive time limit.';
                 return;
             }
+            if (mission.Key.Group === 'Workshop') {
+                handleWorkshopAction(byId('add'), mission, false);
+                return;
+            }
             rotation.push(mission);
             showRotation();
             byId('status').textContent = 'Mission added. Save and reload to apply the rotation.';
@@ -271,7 +278,11 @@
         }
         byId('save').addEventListener('click', saveSettings);
         byId('save-options').addEventListener('click', saveSettings);
-        byId('next').addEventListener('click', (event) => send(event.currentTarget, '/settings/next', selectedMission()));
+        byId('next').addEventListener('click', (event) => {
+            const mission = selectedMission();
+            if (mission.Key.Group === 'Workshop') handleWorkshopAction(event.currentTarget, mission, true);
+            else send(event.currentTarget, '/settings/next', mission);
+        });
         showRotation();
         showPasswordState(initial.password_set);
         updatePasswordField();

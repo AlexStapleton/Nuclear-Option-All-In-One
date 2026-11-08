@@ -230,7 +230,7 @@ def save_settings():
 
 def workshop_status(settings, identifier):
     if identifier not in configured_workshop_items(settings):
-        return "unsaved", "Add this item to the rotation and save to start the Steam download."
+        return "unsaved", "Add this item to the rotation to save it and start the Steam download."
     if server_options.effective_ports(settings) != ACTIVE_PORTS:
         return "restart", "Run sh start.sh on the Linux host to apply the saved settings and start the Steam download."
     if workshop.has_mission_file(DATA_DIR, identifier, mission_import.UPLOAD_LIMIT):
@@ -253,6 +253,45 @@ def check_workshop():
     response = jsonify(id=identifier, state=state, message=message, details=details)
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+@app.post("/settings/workshop")
+def add_workshop():
+    data = request.get_json()
+    try:
+        if not isinstance(data, dict):
+            raise ValueError("Choose a Steam Workshop mission.")
+        mission = parse_mission(data.get("mission"))
+        if mission["Key"]["Group"] != "Workshop":
+            raise ValueError("Choose a Steam Workshop mission.")
+    except ValueError as error:
+        return jsonify(message=str(error)), 400
+
+    identifier = mission["Key"]["Name"]
+    with CONFIG_LOCK:
+        try:
+            settings, revision = read_config()
+            if revision != data.get("revision"):
+                return jsonify(message="The saved configuration changed. Refresh the page before adding this item."), 409
+            rotation = settings.get("MissionRotation", [])
+            if not isinstance(rotation, list):
+                return jsonify(message="The saved mission rotation is invalid. Fix it before adding this item."), 409
+            ports = server_options.effective_ports(settings)
+            added = identifier not in configured_workshop_items(settings)
+            if added:
+                settings["MissionRotation"] = [*rotation, mission]
+                revision = write_config(settings)
+            state, message = workshop_status(settings, identifier)
+            if ports == ACTIVE_PORTS and (added or state == "waiting"):
+                status, _ = server_commands.reload_config(create_remote_commander(), str(CONFIG_PATH))
+                if status != "Success":
+                    state = "reload_failed"
+                    message = f"The server could not reload its configuration ({status}). Try again or restart the server."
+        except (OSError, ValueError, TypeError):
+            return jsonify(message="Could not update the Workshop rotation. Check the saved configuration."), 503
+    prefix = "Saved to the mission rotation." if added else "Already saved in the mission rotation."
+    return jsonify(mission=mission, revision=revision, workshop_items=configured_workshop_items(settings),
+                   state=state, message=f"{prefix} {message}")
 
 
 @app.post("/settings/import")

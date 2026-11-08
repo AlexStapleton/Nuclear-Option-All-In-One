@@ -40,7 +40,8 @@ def item_details(identifier):
     tags = {str(entry.get("tag", "")).casefold() for entry in details.get("tags") or [] if isinstance(entry, dict)}
     if tags & {"livery", "liveries", "skin", "skins", "mod", "mods", "collection"} and not tags & {"mission", "missions"}:
         return {"message": "Steam identifies this item as something other than a mission.", "incompatible": True}
-    return {"title": str(details.get("title", ""))}
+    return {"title": str(details.get("title", "")),
+            "mod_required": "mod required" in tags, "custom_map": "nocustommaps" in tags}
 
 
 def has_mission_file(data_dir, identifier, limit):

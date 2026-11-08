@@ -33,6 +33,8 @@ let workshopTimer;
 let workshopRequest = 0;
 let inspectedItem = '';
 let incompatibleItem = '';
+let pendingWorkshopQueue;
+const cancelWorkshopQueue = byId('cancel-workshop-queue');
 
 function isWorkshopLink(value) {
     return /^(?:https?:\/\/)?(?:www\.)?steamcommunity\.com\/(?:sharedfiles|workshop)\/filedetails\/?\?/i.test(value);
@@ -64,19 +66,52 @@ async function refreshWorkshop(lookup = false) {
         if (request !== workshopRequest) return;
         workshopStatusText.textContent = item.message;
         if (lookup && response.ok) {
-            workshopDetailsText.textContent = item.details.title || item.details.message || '';
+            const {title, message, custom_map, mod_required} = item.details;
+            const requirement = custom_map ? 'Requires the NOCustomMaps mod and the matching map on the server.'
+                : mod_required ? 'Steam marks this mission as requiring a mod.' : '';
+            workshopDetailsText.textContent = [title || message, requirement].filter(Boolean).join(' · ');
+            if (title) {
+                workshopTitles.set(item.id, title);
+                showRotation();
+            }
             incompatibleItem = item.details.incompatible ? value : '';
+        }
+        const pending = pendingWorkshopQueue;
+        if (pending && item.id === pending.mission.Key.Name) {
+            if (item.state === 'cached') {
+                clearPendingWorkshopQueue();
+                await send(byId('next'), '/settings/next', pending.mission);
+                return;
+            }
+            if (item.state !== 'waiting' || Date.now() >= pending.until) {
+                clearPendingWorkshopQueue();
+                byId('status').textContent = item.state === 'waiting'
+                    ? 'The Workshop mission is saved. Once the download finishes, click Queue as next mission again.'
+                    : item.message;
+            } else {
+                workshopStatusText.textContent = 'Saved in the rotation. Keep this page open to queue it when the download finishes.';
+            }
         }
         if (item.state === 'waiting') workshopTimer = setTimeout(refreshWorkshop, 5000);
     } catch {
         if (request !== workshopRequest) return;
         workshopStatusText.textContent = 'The panel could not check Workshop status. Try again.';
+        if (pendingWorkshopQueue && Date.now() < pendingWorkshopQueue.until) {
+            workshopTimer = setTimeout(refreshWorkshop, 5000);
+        } else if (pendingWorkshopQueue) {
+            clearPendingWorkshopQueue();
+            byId('status').textContent = 'The Workshop mission is saved. Check the download and try queueing it again.';
+        }
     } finally {
         if (request === workshopRequest) workshopCheckButton.disabled = false;
     }
 }
 
 function workshopInputChanged() {
+    if (pendingWorkshopQueue) {
+        clearPendingWorkshopQueue();
+        byId('status').textContent = 'Automatic queue canceled. The Workshop mission is saved in the rotation.';
+    }
     clearTimeout(workshopTimer);
     workshopRequest += 1;
     if (isWorkshopLink(byId('mission-name').value.trim())) byId('group').value = 'Workshop';
@@ -84,11 +119,50 @@ function workshopInputChanged() {
     workshopTimer = setTimeout(refreshWorkshop, 250);
 }
 
-function knownIncompatibleWorkshop(event) {
-    if (byId('group').value !== 'Workshop' || !incompatibleItem
-            || byId('mission-name').value.trim() !== incompatibleItem) return;
-    event.stopImmediatePropagation();
-    byId('status').textContent = workshopDetailsText.textContent;
+function clearPendingWorkshopQueue() {
+    pendingWorkshopQueue = undefined;
+    cancelWorkshopQueue.hidden = true;
+}
+
+async function handleWorkshopAction(button, mission, queue) {
+    if (incompatibleItem && mission.Key.Name === incompatibleItem) {
+        byId('status').textContent = workshopDetailsText.textContent;
+        return;
+    }
+    clearPendingWorkshopQueue();
+    const otherButtons = ['save', 'save-options', queue ? 'add' : 'next'].map(byId);
+    if (otherButtons.some((control) => control.disabled)) return;
+    otherButtons.forEach((control) => { control.disabled = true; });
+    byId('status').textContent = 'Saving the Workshop mission…';
+    const selection = JSON.stringify(mission);
+    let result;
+    try {
+        result = await send(button, '/settings/workshop', {mission, revision});
+    } finally {
+        otherButtons.forEach((control) => { control.disabled = false; });
+    }
+    if (!result) {
+        if (selection === JSON.stringify(selectedMission())) workshopStatusText.textContent = byId('status').textContent;
+        return;
+    }
+
+    const saved = result.mission;
+    const inDraft = rotation.some((entry) => entry.Key?.Group === 'Workshop' && entry.Key.Name === saved.Key.Name);
+    if (!inDraft) rotation.push(saved);
+    showRotation();
+    updateMissionOptions('saved-workshop', 'Workshop', result.workshop_items);
+    if (selection !== JSON.stringify(selectedMission())) return;
+    workshopStatusText.textContent = result.message;
+    if (queue && result.state === 'cached') {
+        await send(button, '/settings/next', saved);
+    } else if (result.state === 'waiting') {
+        if (queue) {
+            pendingWorkshopQueue = {mission: saved, until: Date.now() + 120000};
+            cancelWorkshopQueue.hidden = false;
+            byId('status').textContent = 'Saved to the rotation. Keep this page open to queue it when the download finishes.';
+        }
+        refreshWorkshop();
+    }
 }
 
 function updateMissionOptions(id, group, items) {
@@ -105,10 +179,14 @@ function updateMissionOptions(id, group, items) {
 }
 
 byId('mission-name').addEventListener('input', workshopInputChanged);
+byId('mission-time').addEventListener('input', workshopInputChanged);
 byId('group').addEventListener('change', workshopInputChanged);
 byId('preset').addEventListener('change', workshopInputChanged);
-byId('add').addEventListener('click', knownIncompatibleWorkshop, true);
-byId('next').addEventListener('click', knownIncompatibleWorkshop, true);
+cancelWorkshopQueue.addEventListener('click', () => {
+    clearPendingWorkshopQueue();
+    byId('status').textContent = 'Automatic queue canceled. The Workshop mission is saved in the rotation.';
+    refreshWorkshop();
+});
 workshopCheckButton.addEventListener('click', () => refreshWorkshop(true));
 document.addEventListener('settings-saved', ({detail: {result, options}}) => {
     for (const input of serverOptionInputs) {
