@@ -2,7 +2,7 @@
 
 ## 1. Prepare the Linux host
 
-Use an x86-64 Linux machine with a current Docker Engine and the Docker Compose plugin. The account you use should be able to run Docker and write to the chosen data directory. Check that `uname -m` reports `x86_64` and `docker compose version` succeeds.
+Use an x86-64 Linux machine with Docker Engine, the Docker Compose plugin, and Python 3. The account you use should be able to run Docker and write to the chosen data directory. The launcher uses Python to read the game and Steam query ports from the saved server configuration.
 
 ## 2. Download and start the stack
 
@@ -46,9 +46,11 @@ If the Linux host already uses port 5000, set `PANEL_PORT` in `.env`, run `sh st
 
 Click **Settings & missions** in the dashboard navigation. Under **Game join password**, choose **Set a password** or **Remove password**, then click **Save and reload**. If the game browser still shows the previous settings, run `docker compose restart`. Use the mission picker to add entries to the rotation, reorder them, or change time limits. **Queue as next mission** sets a one-time override after the current mission ends. [Shockfront's command reference](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/tree/main/ServerCommands)
 
+**Server options** covers maximum players, visibility, the modded flag, mission timing and storage, ban and exemption lists, automatic kicks, vote kicks, and UDP ports. To change the UDP ports, save the overrides and run `sh start.sh` on the Linux host. The launcher publishes the configured ports in Docker. Update any router forwards and firewall rules to match. If you change the mission directory, move the existing mission folders to the new location before saving. [Shockfront's configuration reference](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/blob/main/DedicatedServerGuide.md#config-settings)
+
 - **Built-in missions.** Use the presets or enter an exact mission name with the appropriate group if it is missing from the picker.
 - **Local custom scenarios.** In the Windows mission editor, save a multiplayer mission. In the panel, use **Import a custom mission** to open the saved JSON or a ZIP of one mission folder. A ZIP keeps any companion files. Edit the fields the panel recognizes, such as the briefing, respawn rule, or weather, and choose **Save as copy**. The new mission is selected in the picker. Use **Queue as next mission** for a one-time run or **Add to rotation** followed by **Save and reload**. Uploads support up to 16 MiB, with ZIP contents up to 64 MiB unpacked. If you set a custom `MissionDirectory`, use a subfolder under `/server` so both containers can see it.
-- **Steam Workshop.** Select `Workshop`, paste the Steam Community item link or its numeric ID, and add it to the rotation. Save first so the dedicated server can download the item. [Shockfront's mission format](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/blob/main/DedicatedServerGuide.md#loading-missions)
+- **Steam Workshop.** Paste an item link or choose `Workshop` and enter its numeric ID. **Check item on Steam** can look up the title and flag items for other games. Click **Add to rotation**, then **Save and reload** to start the server's native download for public or accessible unlisted items. Wait for the picker to report that the mission file is present before queueing it. If Steam requires access to a private item, export or download it with an account that has access, then import the mission JSON or ZIP as a local scenario. Use **Server logs** to troubleshoot downloads. [Shockfront's Workshop instructions](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/blob/main/DedicatedServerGuide.md#workshop-missions)
 
 If you are upgrading an existing installation, run `git pull` and `sh start.sh` to rebuild the panel. If the settings page reports a permissions error, check that the account owning the data folder can read the JSON file and write to the folder.
 
@@ -73,7 +75,7 @@ Run these commands from the project folder on Linux.
 | Follow game logs | `docker compose logs -f nuclear-option` |
 | Follow panel logs | `docker compose logs -f panel` |
 
-Back up your configured data directory, `.env` if you use it, and `.panel.env`. To rotate the panel password, edit `.panel.env` and run `docker compose up -d --force-recreate panel`.
+Back up your configured data directory, `.env` if you use it, and `.panel.env`. To rotate the panel password, edit `.panel.env` and run `sh start.sh`.
 
 ## Move existing server data
 
@@ -81,4 +83,4 @@ Back up your configured data directory, `.env` if you use it, and `.panel.env`. 
 2. Create the new host directory and copy the **contents** of the old data folder into it, including `DedicatedServerConfig.json`, the ban list, and `missions/`. The old default folder is `./server`.
 3. Set `SERVER_DATA_DIR` in `.env` to the new path and run `sh start.sh`. The launcher preserves an existing configuration in that folder. If you point it at an empty directory, it creates a fresh configuration there.
 
-Keep container paths such as `/server/missions` in the game JSON. If the old config points elsewhere for custom missions, copy those missions into the new data folder's `missions/` subdirectory and set `MissionDirectory` to `/server/missions`. If the config overrides the default game or query ports, match those values in the Compose port mappings.
+Keep container paths such as `/server/missions` in the game JSON. If the old config points elsewhere for custom missions, copy those missions into the new data folder's `missions/` subdirectory and set `MissionDirectory` to `/server/missions`. The launcher reads any game and query port overrides from the migrated configuration.

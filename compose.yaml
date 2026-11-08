@@ -17,8 +17,8 @@ services:
     stop_grace_period: 30s
     logging: *logging
     ports:
-      - "7777:7777/udp"
-      - "7778:7778/udp"
+      - "${NO_GAME_PORT:-7777}:${NO_GAME_PORT:-7777}/udp"
+      - "${NO_QUERY_PORT:-7778}:${NO_QUERY_PORT:-7778}/udp"
       - "${PANEL_BIND_IP:-0.0.0.0}:${PANEL_PORT:-5000}:5000/tcp"
     volumes:
       - type: bind
@@ -40,6 +40,9 @@ services:
     restart: unless-stopped
     logging: *logging
     env_file: .panel.env
+    environment:
+      NO_GAME_PORT: "${NO_GAME_PORT:-7777}"
+      NO_QUERY_PORT: "${NO_QUERY_PORT:-7778}"
     cap_drop: [ALL]
     cap_add: [SETGID, SETUID]
     security_opt: [no-new-privileges:true]

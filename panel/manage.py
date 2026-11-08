@@ -4,12 +4,10 @@ import hashlib
 import json
 import math
 import os
-import re
 import stat
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import Lock
-from urllib.parse import parse_qs, urlparse
 
 from flask import abort, jsonify, render_template, request
 from werkzeug.exceptions import RequestEntityTooLarge
@@ -17,6 +15,8 @@ from werkzeug.exceptions import RequestEntityTooLarge
 import config
 import mission_import
 import server_commands
+import server_options
+import workshop
 from app import app, create_remote_commander, requires_auth
 
 DATA_DIR = Path("/server")
@@ -25,6 +25,7 @@ STOCK_MISSIONS = ("Altercation", "Confrontation", "Domination", "Escalation", "T
 MISSION_GROUPS = ("BuiltIn", "User", "Workshop", "Default", "Tutorial")
 CONFIG_LOCK = Lock()
 LOG_TAIL_BYTES = 64 * 1024
+ACTIVE_PORTS = (int(os.environ.get("NO_GAME_PORT", 7777)), int(os.environ.get("NO_QUERY_PORT", 7778)))
 
 
 def read_config():
@@ -107,6 +108,19 @@ def local_missions(settings):
     return sorted(names, key=str.casefold)
 
 
+def configured_workshop_items(settings):
+    rotation = settings.get("MissionRotation")
+    items = {}
+    for entry in rotation if isinstance(rotation, list) else []:
+        key = entry.get("Key") if isinstance(entry, dict) else None
+        if isinstance(key, dict) and key.get("Group") == "Workshop" and isinstance(key.get("Name"), str):
+            try:
+                items[workshop.item_id(key["Name"].strip())] = None
+            except ValueError:
+                continue
+    return list(items)
+
+
 def parse_mission(item):
     if not isinstance(item, dict) or not isinstance(item.get("Key"), dict):
         raise ValueError("Each mission needs a group, name, and time limit.")
@@ -118,13 +132,7 @@ def parse_mission(item):
         raise ValueError("Each mission needs a positive time limit in seconds.")
     name = name.strip()
     if group == "Workshop":
-        if not re.fullmatch(r"[0-9]+", name):
-            url = urlparse(name)
-            if (url.scheme in ("http", "https") and url.hostname == "steamcommunity.com"
-                    and url.path.rstrip("/") in ("/sharedfiles/filedetails", "/workshop/filedetails")):
-                name = parse_qs(url.query).get("id", [""])[0]
-        if not re.fullmatch(r"[0-9]+", name) or not name.strip("0"):
-            raise ValueError("Enter a Steam Workshop item ID or its Steam Community link.")
+        name = workshop.item_id(name)
     return {**item, "Key": {**item["Key"], "Group": group, "Name": name}, "MaxTime": seconds}
 
 
@@ -152,6 +160,9 @@ def settings_page():
     except (OSError, ValueError, TypeError):
         abort(503, "Check that the server data folder and its JSON config are readable.")
     return render_template("settings.html", stock=STOCK_MISSIONS, custom=custom,
+                           workshop_items=configured_workshop_items(settings),
+                           option_sections=server_options.SECTIONS,
+                           option_values=server_options.form_values(settings),
                            mission_fields=mission_import.FIELDS,
                            groups=MISSION_GROUPS, initial={
                                "name": settings.get("ServerName", ""),
@@ -197,15 +208,56 @@ def save_settings():
             settings.update(ServerName=name.strip(), RotationType=rotation_type, MissionRotation=rotation)
             if password_mode != "keep":
                 settings["Password"] = password if password_mode == "set" else ""
+            try:
+                ports = server_options.apply_options(settings, data.get("options", {}), DATA_DIR)
+            except ValueError as error:
+                return jsonify(message=str(error)), 400
             revision = write_config(settings)
+            restart_required = ports != ACTIVE_PORTS
+            if restart_required:
+                message = "Saved. Run sh start.sh on the Linux host to apply the UDP ports and reload the settings."
+            else:
+                status, _ = server_commands.reload_config(create_remote_commander(), str(CONFIG_PATH))
+                message = "Saved and reloaded. Restart the server if the game browser still shows the previous settings."
+                if status != "Success":
+                    message = f"Saved. Reload returned {status}. Run sh start.sh or restart the game server to apply the changes."
         except (OSError, ValueError):
             return jsonify(message="Could not write the server config. Check data folder permissions."), 503
 
-    status, _ = server_commands.reload_config(create_remote_commander(), str(CONFIG_PATH))
-    message = "Saved and reloaded. If the game browser still shows the previous server settings, restart the server."
-    if status != "Success":
-        message = f"Saved. Reload returned {status}. Restart the server to apply the changes."
-    return jsonify(message=message, revision=revision, password_set=bool(settings.get("Password")))
+    try:
+        local = local_missions(settings)
+    except OSError:
+        local = []
+    return jsonify(message=message, revision=revision, password_set=bool(settings.get("Password")),
+                   local_missions=local, workshop_items=configured_workshop_items(settings))
+
+
+def workshop_status(settings, identifier):
+    if identifier not in configured_workshop_items(settings):
+        return "unsaved", "Add this item to the rotation and save to start the Steam download."
+    if server_options.effective_ports(settings) != ACTIVE_PORTS:
+        return "restart", "Run sh start.sh on the Linux host to apply the saved settings and start the Steam download."
+    if workshop.has_mission_file(DATA_DIR, identifier, mission_import.UPLOAD_LIMIT):
+        return "cached", "Mission file found in the server’s Workshop cache. You can queue it for the next round."
+    return "waiting", "Waiting for Steam to download a mission file. See Server logs if it does not appear."
+
+
+@app.get("/settings/workshop")
+@requires_auth
+def check_workshop():
+    try:
+        identifier = workshop.item_id(request.args.get("item", "").strip())
+    except ValueError as error:
+        return jsonify(message=str(error)), 400
+    try:
+        settings, _ = read_config()
+        state, message = workshop_status(settings, identifier)
+    except (OSError, ValueError, TypeError):
+        return jsonify(message="Could not read the Workshop state. Check the server configuration."), 503
+    details = workshop.item_details(identifier) if request.args.get("details") == "1" else {}
+    response = jsonify(id=identifier, state=state, message=message, details=details)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.post("/settings/import")
@@ -248,6 +300,19 @@ def queue_mission():
     except ValueError as error:
         return jsonify(message=str(error)), 400
     key = mission["Key"]
+    if key["Group"] in ("User", "Workshop"):
+        try:
+            settings, _ = read_config()
+            if key["Group"] == "User" and key["Name"] not in local_missions(settings):
+                return jsonify(message="The local mission is missing. Import it or check the saved mission directory."), 409
+            if key["Group"] == "User" and server_options.effective_ports(settings) != ACTIVE_PORTS:
+                return jsonify(message="Run sh start.sh on the Linux host to apply the saved settings before queueing."), 409
+            if key["Group"] == "Workshop":
+                state, message = workshop_status(settings, key["Name"])
+                if state != "cached":
+                    return jsonify(message=message), 409
+        except (OSError, ValueError, TypeError):
+            return jsonify(message="Could not verify the mission in the server data folder."), 503
     status, _ = server_commands.set_next_mission(
         create_remote_commander(), key["Group"], key["Name"], mission["MaxTime"],
     )

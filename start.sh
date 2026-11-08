@@ -7,6 +7,10 @@ if [ "$(uname -m)" != x86_64 ]; then
     exit 1
 fi
 docker compose version >/dev/null
+if ! command -v python3 >/dev/null 2>&1; then
+    printf '%s\n' 'Install python3 so the launcher can read the game ports from the server config.' >&2
+    exit 1
+fi
 
 if [ ! -e .panel.env ]; then
     password=$(od -An -N24 -tx1 /dev/urandom | tr -d '[:space:]')
@@ -30,6 +34,11 @@ if [ ! -e "$data_dir/DedicatedServerConfig.json" ]; then
     cp server-config.example.json "$data_dir/DedicatedServerConfig.json"
 fi
 
+udp_ports=$(python3 -B panel/server_options.py "$data_dir/DedicatedServerConfig.json")
+read -r NO_GAME_PORT NO_QUERY_PORT <<EOF
+$udp_ports
+EOF
+export NO_GAME_PORT NO_QUERY_PORT
 docker compose up -d --build
 panel_port=$(printf '%s\n' "$compose_env" | sed -n 's/^PANEL_PORT=//p')
 printf '\n%s\n' 'Panel login is admin. Read the generated password with: cat .panel.env'

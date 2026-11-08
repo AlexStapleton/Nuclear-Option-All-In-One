@@ -3,14 +3,14 @@
 Run the official Nuclear Option dedicated server on an x86-64 Linux host and manage it from a browser on your Windows PC. Docker Compose runs the game server and Shockfront's web control panel together.
 
 - **One-command start.** The launcher creates the initial server configuration, generates a panel password, and starts both containers. SteamCMD checks for game updates when the server container starts.
-- **Browser administration.** See live mission and player information, send announcements, and set a game join password. Import and edit saved missions, manage the rotation, or add Steam Workshop links. Use **Moderation** to kick or ban players and manage server access.
+- **Browser administration.** Change dedicated server settings, import local missions, and check Steam Workshop downloads before queueing them. Use **Moderation** to kick or ban players and manage server access.
 - **LAN admin access.** Open `http://LINUX_LAN_IP:5000` from your browser. The game's remote-command port stays inside the stack.
 - **Live server logs.** Check Steam updates, game startup, and mission-loading messages under **Server logs**.
 - **Configurable storage.** Game files, settings, and custom missions live in `./server` by default. Set `SERVER_DATA_DIR` in `.env` to choose another host folder.
 
 ## Quick start
 
-On an x86-64 Linux host with Docker Engine and Docker Compose, run:
+On an x86-64 Linux host with Docker Engine, Docker Compose, and Python 3, run:
 
 ```sh
 git clone https://github.com/AlexStapleton/Nuclear-Option-All-In-One.git
@@ -30,6 +30,8 @@ Use `docker compose ps` to check that the game container publishes both **UDP** 
 | `7778/udp` | Steam server browser queries | Forward for internet play |
 | `5000/tcp` by default | Web admin panel (`PANEL_PORT`) | Trusted LAN only |
 | `7779/tcp` | Game remote commands | Internal to the Docker stack |
+
+If you override the game or query port in **Settings & missions**, run `sh start.sh` after saving. Use the new UDP ports in your router and firewall rules.
 
 ### OPNsense IPv4 example
 
