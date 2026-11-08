@@ -9,6 +9,9 @@ RUN tar -xzf /tmp/panel.tar.gz -C /tmp \
 
 WORKDIR /app
 COPY config.py /app/config.py
+COPY manage.py /app/manage.py
+COPY settings.html /app/templates/settings.html
+RUN sed -i '/<h1 class="mb-4">Nuclear Option Server Manager<\/h1>/a\        <p><a href="/settings" class="btn btn-primary">Server Settings &amp; Missions</a></p>' templates/index.html \
+    && grep -q 'href="/settings"' templates/index.html
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
-USER 10001:10001
-CMD ["python", "app.py"]
+CMD ["python", "manage.py"]
