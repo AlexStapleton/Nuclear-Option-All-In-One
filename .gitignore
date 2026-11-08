@@ -1,6 +1,7 @@
 /.env
 /.panel.env
 .panel-password
+.panel-kicks.json
 /server/
 __pycache__/
 *.py[cod]

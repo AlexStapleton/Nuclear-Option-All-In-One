@@ -4,7 +4,9 @@ import hashlib
 import json
 import math
 import os
+import re
 import stat
+from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import Lock, Thread
@@ -31,6 +33,10 @@ MISSION_GROUPS = ("BuiltIn", "User", "Workshop", "Default", "Tutorial")
 CONFIG_LOCK = Lock()
 MISSION_LOCK = Lock()
 MOD_LOCK = Lock()
+KICK_LOCK = Lock()
+KICK_COMMANDS = {"kick_player", "unkick_player", "clear_kicked_players"}
+STEAM_ID = re.compile(r"[0-9]{1,20}")
+BAN_ENTRY = re.compile(r"^\s*([0-9]{1,20})(?=$|[\s,;|:])")
 mod_plan = None
 mod_job = {"running": False, "message": ""}
 LOG_TAIL_BYTES = 64 * 1024
@@ -64,6 +70,101 @@ def moderation_page():
     return render_template("moderation.html")
 
 
+def game_instance():
+    marker = DATA_DIR / ".panel-logs" / "game-instance"
+    try:
+        with marker.open(encoding="ascii") as stream:
+            return stream.read(64).strip()
+    except (OSError, ValueError):
+        return ""
+
+
+def valid_steam_id(value):
+    return isinstance(value, str) and STEAM_ID.fullmatch(value) and 0 < int(value) < 2**64
+
+
+def tracked_kicks(instance):
+    record = workshop.read_metadata(DATA_DIR / ".panel-kicks.json")
+    ids = record.get("ids")
+    return set(filter(valid_steam_id, ids)) if instance and record.get("instance") == instance and isinstance(ids, list) else set()
+
+
+def track_kick_command(view):
+    @wraps(view)
+    def run():
+        # Keep the recorded order consistent with the actual server commands.
+        with KICK_LOCK:
+            instance = game_instance()
+            response = app.make_response(view())
+            result = response.get_json(silent=True)
+            if (instance and instance == game_instance() and 200 <= response.status_code < 300
+                    and isinstance(result, dict) and result.get("status_code") == "Success"):
+                save_kick_result(instance)
+            return response
+    return run
+
+
+def save_kick_result(instance):
+    command = request.endpoint
+    steam_id = (request.get_json(silent=True) or {}).get("steam_id")
+    if command != "clear_kicked_players" and not valid_steam_id(steam_id):
+        return
+    try:
+        ids = tracked_kicks(instance)
+        if command == "kick_player":
+            ids.add(str(int(steam_id)))
+        elif command == "unkick_player":
+            ids.discard(str(int(steam_id)))
+        else:
+            ids.clear()
+        workshop.write_metadata(DATA_DIR / ".panel-kicks.json", {"instance": instance, "ids": sorted(ids)})
+    except OSError:
+        app.logger.exception("Could not save the panel kick list.")
+
+
+for endpoint in KICK_COMMANDS:
+    app.view_functions[endpoint] = track_kick_command(app.view_functions[endpoint])
+
+
+@app.get("/moderation/access")
+def moderation_access():
+    bans = set()
+    incomplete = False
+    root = DATA_DIR.resolve()
+    try:
+        settings, _ = read_config()
+        paths = settings.get("BanListPaths", ["ban_list.txt"])
+        if not isinstance(paths, list):
+            raise ValueError("BanListPaths must be a list.")
+        for name in paths:
+            try:
+                path = (root / name).resolve()
+                if not path.is_relative_to(root):
+                    incomplete = True
+                    continue
+                if not stat.S_ISREG(path.stat().st_mode):
+                    incomplete = True
+                    continue
+                with path.open(encoding="utf-8-sig", errors="replace") as stream:
+                    lines = stream.read(256 * 1024 + 1)
+                if len(lines) > 256 * 1024:
+                    incomplete = True
+                    lines = lines[:256 * 1024].rpartition("\n")[0]
+                for line in lines.splitlines():
+                    match = BAN_ENTRY.match(line)
+                    if match and valid_steam_id(match[1]):
+                        bans.add(str(int(match[1])))
+            except FileNotFoundError:
+                continue
+            except (OSError, ValueError, TypeError, RuntimeError):
+                incomplete = True
+    except (OSError, ValueError):
+        incomplete = True
+    instance = game_instance()
+    return jsonify(bans=sorted(bans), bans_incomplete=incomplete,
+                   kicks=sorted(tracked_kicks(instance)), kick_tracking=bool(instance))
+
+
 @app.get("/logs")
 def logs_page():
     return render_template("logs.html")
@@ -71,12 +172,28 @@ def logs_page():
 
 @app.get("/logs/tail")
 def log_tail():
-    log_dir = DATA_DIR / ".panel-logs"
+    source = request.args.get("source", "game")
+    if source == "game":
+        log_dir = DATA_DIR / ".panel-logs"
+        paths = [log_dir / name for name in ("server.log", "server.log.1")]
+    elif source == "mods":
+        paths = []
+        try:
+            selected = server_mods.selected_set(DATA_DIR)
+            if selected:
+                profile = server_mods.mod_root(DATA_DIR) / selected["id"]
+                path = (profile / "BepInEx" / "LogOutput.log").resolve()
+                if path.is_relative_to(profile) and path.is_file():
+                    paths.append(path)
+        except (OSError, ValueError, RuntimeError):
+            abort(503, "The mod loader log could not be read.")
+    else:
+        abort(400, "Unknown log source.")
     chunks = []
     remaining = LOG_TAIL_BYTES
-    for name in ("server.log", "server.log.1"):
+    for path in paths:
         try:
-            with (log_dir / name).open("rb") as stream:
+            with path.open("rb") as stream:
                 end = stream.seek(0, os.SEEK_END)
                 size = min(end, remaining)
                 stream.seek(end - size)
@@ -278,12 +395,16 @@ def save_settings():
                    local_missions=local, workshop_items=configured_workshop_items(settings))
 
 
-def workshop_status(settings, identifier):
+def workshop_status(settings, identifier, downloaded):
     if identifier not in configured_workshop_items(settings):
-        return "unsaved", "Add this item to the rotation to save it and start the Steam download."
+        if not downloaded:
+            return "unsaved", "Add this item to the rotation to save it and start the Steam download."
+        if server_options.effective_ports(settings) != ACTIVE_PORTS:
+            return "restart", "Run sh start.sh on the Linux host to apply the saved settings before queueing."
+        return "downloaded", "This mission is downloaded and available to queue without saving it to the rotation."
     if server_options.effective_ports(settings) != ACTIVE_PORTS:
         return "restart", "Run sh start.sh on the Linux host to apply the saved settings and start the Steam download."
-    if workshop.has_mission_file(DATA_DIR, identifier, mission_import.UPLOAD_LIMIT):
+    if downloaded:
         return "cached", "Mission file found in the server’s Workshop cache. You can queue it for the next round."
     return "waiting", "Waiting for Steam to download a mission file. See Server logs if it does not appear."
 
@@ -296,13 +417,30 @@ def check_workshop():
         return jsonify(message=str(error)), 400
     try:
         settings, _ = read_config()
-        state, message = workshop_status(settings, identifier)
+        cached = workshop.cached_mission_file(DATA_DIR, identifier, mission_import.UPLOAD_LIMIT)
+        state, message = workshop_status(settings, identifier, cached is not None)
     except (OSError, ValueError, TypeError):
         return jsonify(message="Could not read the Workshop state. Check the server configuration."), 503
     details = workshop.item_details(identifier) if request.args.get("details") == "1" else {}
     response = jsonify(id=identifier, state=state, message=message, details=details)
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+@app.get("/settings/workshop/downloaded")
+def downloaded_workshop():
+    try:
+        settings, _ = read_config()
+        in_rotation = set(configured_workshop_items(settings))
+        downloaded = workshop.downloaded_missions(DATA_DIR, mission_import.UPLOAD_LIMIT)
+        titles = resolve_workshop_titles(downloaded, refresh=False)
+        local = local_missions(settings)
+    except (OSError, ValueError, TypeError):
+        return jsonify(message="Could not read the server’s Workshop downloads."), 503
+    missions = [{"id": identifier, "title": titles.get(identifier, filename), "in_rotation": identifier in in_rotation}
+                for identifier, filename in downloaded.items()]
+    missions.sort(key=lambda mission: (mission["title"].casefold(), mission["id"]))
+    return jsonify(missions=missions, built_in=STOCK_MISSIONS, local=local)
 
 
 @app.post("/settings/workshop")
@@ -331,7 +469,8 @@ def add_workshop():
             if added:
                 settings["MissionRotation"] = [*rotation, mission]
                 revision = write_config(settings)
-            state, message = workshop_status(settings, identifier)
+            cached = workshop.cached_mission_file(DATA_DIR, identifier, mission_import.UPLOAD_LIMIT)
+            state, message = workshop_status(settings, identifier, cached is not None)
             if ports == ACTIVE_PORTS and (added or state == "waiting"):
                 status, _ = server_commands.reload_config(create_remote_commander(), str(CONFIG_PATH))
                 if status != "Success":
@@ -574,8 +713,15 @@ def switch_mission():
 
 
 def select_next_mission(switch=False):
+    data = request.get_json(silent=True)
     try:
-        mission = parse_mission(request.get_json(silent=True))
+        mission = parse_mission(data)
+        delay = data.get("delay", 0) if switch else 0
+        announcement = data.get("announcement", "") if switch else ""
+        if type(delay) is not int or not 0 <= delay <= 3600:
+            raise ValueError("Enter a whole delay from 0 to 3600 seconds.")
+        if not isinstance(announcement, str) or len(announcement) > 240 or any(c in announcement for c in "\r\n\0"):
+            raise ValueError("Enter an announcement of up to 240 characters on one line.")
     except ValueError as error:
         return jsonify(message=str(error)), 400
     key = mission["Key"]
@@ -587,14 +733,16 @@ def select_next_mission(switch=False):
             if key["Group"] == "User" and server_options.effective_ports(settings) != ACTIVE_PORTS:
                 return jsonify(message="Run sh start.sh on the Linux host to apply the saved settings before queueing."), 409
             if key["Group"] == "Workshop":
-                state, message = workshop_status(settings, key["Name"])
-                if state != "cached":
+                cached = workshop.cached_mission_file(DATA_DIR, key["Name"], mission_import.UPLOAD_LIMIT)
+                state, message = workshop_status(settings, key["Name"], cached is not None)
+                if state not in ("cached", "downloaded"):
                     return jsonify(message=message), 409
         except (OSError, ValueError, TypeError):
             return jsonify(message="Could not verify the mission in the server data folder."), 503
     label = key["Name"]
     if key["Group"] == "Workshop":
-        label = resolve_workshop_titles([label], refresh=False).get(label, label)
+        label = resolve_workshop_titles([label], refresh=False).get(label) or cached.stem
+    warning = switch_mod_warning(key) if switch else ""
 
     with MISSION_LOCK:
         commander = create_remote_commander()
@@ -617,10 +765,40 @@ def select_next_mission(switch=False):
         if status != "Success" or not isinstance(next_key, dict) or any(next_key.get(field) != key[field] for field in ("Group", "Name")):
             return jsonify(message=f"The server did not confirm {label} as next. Check Overview before retrying."), 502
 
-        status, _ = server_commands.set_time_remaining(commander, 1.0)
+        if announcement.strip() or warning or delay:
+            safe_label = " ".join(label.split()).replace("<", "‹").replace(">", "›")[:100]
+            when = f" in {delay} seconds" if delay else " now"
+            message = " ".join(part for part in (f"Switching to {safe_label}{when}.", warning, announcement.strip()) if part)
+            status, _ = server_commands.send_chat_message(commander, message)
+            if status != "Success":
+                return jsonify(message=f"Queued {label}, but the announcement failed ({status}). The timer was left alone."), 502
+        status, _ = server_commands.set_time_remaining(commander, float(max(1, delay)))
         if status != "Success":
             return jsonify(message=f"Queued {label}, but the server did not confirm the timer change ({status}). Check Overview before retrying."), 502
-        return jsonify(message=f"Switch requested. {label} is next after the server’s mission transition."), 202
+        timing_text = f" The current round ends in {delay} seconds." if delay else ""
+        return jsonify(message=f"Switch requested. {label} is next.{timing_text} The server’s normal transition delay still applies."), 202
+
+
+def switch_mod_warning(key):
+    name = key["Name"]
+    if key["Group"] == "Workshop":
+        try:
+            details = workshop.cached_items(DATA_DIR, [name]).get(name, {})
+            metadata = workshop.describe_item(details, [])
+            if metadata.get("mods", {}).get("required"):
+                return "This mission requires mods. Match the server’s mod versions before joining."
+            selected = server_mods.selected_set(DATA_DIR)
+            if selected and selected.get("item") == name:
+                return "The server has a mod set for this mission. Check your client mods before joining."
+            if "title" in metadata:
+                return ""
+        except (OSError, ValueError, TypeError):
+            pass
+        return "Check the Workshop mission for required client mods."
+    elif key["Group"] == "User":
+        if workshop.read_metadata(DATA_DIR / ".panel-mission-mods.json").get(name):
+            return "This scenario requires mods. Match the server’s mod versions before joining."
+    return ""
 
 
 if __name__ == "__main__":

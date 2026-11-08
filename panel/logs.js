@@ -2,6 +2,7 @@ const output = document.getElementById('server-log');
 const status = document.getElementById('log-status');
 const refreshButton = document.getElementById('log-refresh');
 const pauseButton = document.getElementById('log-pause');
+const source = document.getElementById('log-source');
 let paused = false;
 
 function jumpToLatest() {
@@ -10,11 +11,14 @@ function jumpToLatest() {
 
 async function refreshLogs() {
     if (refreshButton.disabled) return;
+    const selected = source.value;
     refreshButton.disabled = true;
     try {
-        const response = await panelFetch(output.dataset.url, {signal: AbortSignal.timeout(5000)});
+        const query = new URLSearchParams({source: selected});
+        const response = await panelFetch(`${output.dataset.url}?${query}`, {signal: AbortSignal.timeout(5000)});
         if (!response.ok) throw new Error('Log unavailable');
         const log = await response.json();
+        if (selected !== source.value) return;
         const follow = output.scrollHeight - output.scrollTop - output.clientHeight < 8;
         if (output.textContent !== log.text) {
             output.textContent = log.text;
@@ -25,12 +29,15 @@ async function refreshLogs() {
         } else {
             status.textContent = log.available
                 ? 'The log file is empty. Waiting for server output.'
-                : 'No game log yet. Check that the game container is running the current setup.';
+                : selected === 'mods'
+                    ? 'No BepInEx log for the selected server mod set. Check Game server for startup messages.'
+                    : 'No game log yet. Check that the game container is running the current setup.';
         }
     } catch {
-        status.textContent = 'Could not read the latest server output.';
+        if (selected === source.value) status.textContent = 'Could not read the selected log.';
     } finally {
         refreshButton.disabled = false;
+        if (selected !== source.value) refreshLogs();
     }
 }
 
@@ -39,6 +46,11 @@ function refreshIfActive() {
 }
 
 refreshButton.addEventListener('click', refreshLogs);
+source.addEventListener('change', () => {
+    output.textContent = '';
+    status.textContent = 'Loading selected log…';
+    refreshLogs();
+});
 pauseButton.addEventListener('click', () => {
     paused = !paused;
     pauseButton.setAttribute('aria-pressed', String(paused));

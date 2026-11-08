@@ -35,8 +35,12 @@ let workshopTimer;
 let workshopRequest = 0;
 let inspectedItem = '';
 let incompatibleItem = '';
+let readyWorkshopSelection = '';
 let pendingWorkshopQueue;
 const cancelWorkshopQueue = byId('cancel-workshop-queue');
+const workshopLibrary = byId('downloaded-workshop');
+const refreshLibrary = byId('refresh-workshop-library');
+let availableMissions = [];
 
 function isWorkshopLink(value) {
     return /^(?:https?:\/\/)?(?:www\.)?steamcommunity\.com\/(?:sharedfiles|workshop)\/filedetails\/?\?/i.test(value);
@@ -51,6 +55,87 @@ function showWorkshopTitles(titles) {
     for (const option of byId('saved-workshop').children) {
         const title = workshopTitles.get(option.value);
         if (title) option.textContent = title;
+    }
+}
+
+function useAvailableMission(mission, command, button) {
+    if (missionWorkspace.dataset.busy === 'true') return;
+    const preset = byId('preset');
+    const option = [...preset.options].find(entry => entry.value === mission.name && entry.dataset.group === mission.group);
+    if (option) {
+        option.selected = true;
+        preset.dispatchEvent(new Event('change'));
+    } else {
+        preset.value = '';
+        byId('group').value = mission.group;
+        byId('mission-name').value = mission.name;
+        workshopInputChanged();
+    }
+    if (command === 'next') {
+        queueRotationMission(button, selectedMission(), byId('library-action-status'));
+    } else {
+        byId(command).click();
+    }
+}
+
+function renderAvailableMissions() {
+    const source = byId('available-source').value;
+    const list = byId('workshop-library');
+    const rows = availableMissions.filter(mission => !source || mission.group === source);
+    list.replaceChildren(...rows.map((mission, index) => {
+        const row = document.createElement('li');
+        const identity = document.createElement('div');
+        const title = document.createElement('strong');
+        title.id = `available-mission-${index}`;
+        title.textContent = mission.title;
+        if (mission.group === 'Workshop') {
+            title.dataset.workshopTitle = mission.name;
+            title.textContent = workshopTitles.get(mission.name) || mission.title;
+        }
+        const state = document.createElement('p');
+        state.className = 'meta';
+        const inRotation = rotation.some(entry => entry.Key?.Group === mission.group && entry.Key?.Name === mission.name);
+        const sourceLabel = {Workshop: 'Downloaded Workshop', BuiltIn: 'Built-in', User: 'Local scenario'}[mission.group];
+        state.textContent = `${sourceLabel}${inRotation ? ' · In rotation' : ''}`;
+        const controls = document.createElement('div');
+        controls.className = 'actions';
+        for (const [label, command] of [['Add', 'add'], ['Queue next', 'next']]) {
+            if (command === 'add' && inRotation) continue;
+            const button = action(label, event => useAvailableMission(mission, command, event.currentTarget));
+            button.dataset.missionAction = '';
+            button.disabled = missionWorkspace.dataset.busy === 'true';
+            button.setAttribute('aria-describedby', title.id);
+            controls.append(button);
+        }
+        identity.append(title, state);
+        row.append(identity, controls);
+        return row;
+    }));
+    list.hidden = !rows.length;
+    byId('workshop-library-status').textContent = rows.length ? `${rows.length} available.` : 'No missions from this source.';
+}
+
+async function loadWorkshopLibrary() {
+    if (refreshLibrary.disabled) return;
+    refreshLibrary.disabled = true;
+    const status = byId('workshop-library-status');
+    status.textContent = 'Checking available missions…';
+    try {
+        const response = await panelFetch(workshopLibrary.dataset.url);
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message);
+        availableMissions = [
+            ...result.built_in.map(name => ({name, title: name, group: 'BuiltIn'})),
+            ...result.local.map(name => ({name, title: name, group: 'User'})),
+            ...result.missions.map(mission => ({name: mission.id, title: mission.title, group: 'Workshop'})),
+        ];
+        renderAvailableMissions();
+        const ids = result.missions.slice(0, 96).map(mission => mission.id);
+        panelLabels('/workshop/titles', ids, 'titles').then(showWorkshopTitles);
+    } catch (error) {
+        status.textContent = error.message || 'Could not read the server’s Workshop downloads.';
+    } finally {
+        refreshLibrary.disabled = false;
     }
 }
 
@@ -108,7 +193,7 @@ async function refreshWorkshop(lookup = false) {
     if (isWorkshopLink(value)) byId('group').value = 'Workshop';
     const selected = byId('group').value === 'Workshop';
     workshopControls.hidden = !selected;
-    byId('next').textContent = selected ? 'Add and queue' : 'Queue once';
+    byId('next').textContent = selected && readyWorkshopSelection !== value ? 'Add and queue' : 'Queue once';
     if (value !== inspectedItem) {
         inspectedItem = value;
         incompatibleItem = '';
@@ -131,6 +216,8 @@ async function refreshWorkshop(lookup = false) {
         const item = await response.json();
         if (request !== workshopRequest) return;
         workshopStatusText.textContent = item.message;
+        readyWorkshopSelection = ['cached', 'downloaded'].includes(item.state) ? value : '';
+        byId('next').textContent = readyWorkshopSelection ? 'Queue once' : 'Add and queue';
         if (lookup) {
             const {title, message, custom_map, mods} = item.details ?? {};
             workshopDetailsText.textContent = response.ok ? title || message || '' : '';
@@ -177,6 +264,7 @@ async function refreshWorkshop(lookup = false) {
 }
 
 function workshopInputChanged() {
+    readyWorkshopSelection = '';
     if (pendingWorkshopQueue) {
         clearPendingWorkshopQueue();
         byId('picker-status').textContent = 'Automatic queue canceled. The Workshop mission is saved in the rotation.';
@@ -238,7 +326,7 @@ const switchDialog = byId('switch-mission-dialog');
 let switchTarget;
 
 function missionControlButtons() {
-    return [...['add', 'next', 'save', 'save-options'].map(byId), ...missionWorkspace.querySelectorAll('[data-mission-action]')];
+    return [...['add', 'next', 'save', 'save-options'].map(byId), ...document.querySelectorAll('[data-mission-action]')];
 }
 
 async function sendMissionControl(button, url, payload, status) {
@@ -285,9 +373,19 @@ switchDialog.addEventListener('close', () => {
     switchTarget = undefined;
     if (!target || switchDialog.returnValue !== 'confirm' || missionWorkspace.dataset.busy === 'true') return;
     clearPendingWorkshopQueue();
+    const delay = byId('switch-delay').valueAsNumber;
+    const announcement = byId('switch-message').value;
+    if (!Number.isInteger(delay) || delay < 0 || delay > 3600) return;
+    try { localStorage.setItem('mission-switch-options', JSON.stringify({delay, announcement})); } catch { /* storage is optional */ }
     byId('status').textContent = 'Requesting a mission switch…';
-    sendMissionControl(target.button, missionWorkspace.dataset.switchUrl, target.mission);
+    sendMissionControl(target.button, missionWorkspace.dataset.switchUrl, {...target.mission, delay, announcement});
 });
+
+try {
+    const saved = JSON.parse(localStorage.getItem('mission-switch-options'));
+    if (Number.isInteger(saved?.delay) && saved.delay >= 0 && saved.delay <= 3600) byId('switch-delay').value = saved.delay;
+    if (typeof saved?.announcement === 'string') byId('switch-message').value = saved.announcement.slice(0, 240);
+} catch { /* use the form defaults */ }
 
 function updateMissionOptions(id, group, items) {
     const options = byId(id);
@@ -312,6 +410,10 @@ cancelWorkshopQueue.addEventListener('click', () => {
     refreshWorkshop();
 });
 workshopCheckButton.addEventListener('click', () => refreshWorkshop(true));
+refreshLibrary.addEventListener('click', loadWorkshopLibrary);
+byId('available-source').addEventListener('change', renderAvailableMissions);
+document.addEventListener('rotation-rendered', renderAvailableMissions);
+loadWorkshopLibrary();
 document.addEventListener('settings-saved', ({detail: {result, options}}) => {
     for (const input of serverOptionInputs) {
         const key = input.dataset.serverOption;
@@ -323,6 +425,7 @@ document.addEventListener('settings-saved', ({detail: {result, options}}) => {
     updateMissionOptions('local-missions', 'User', result.local_missions);
     updateMissionOptions('saved-workshop', 'Workshop', result.workshop_items);
     loadWorkshopTitles();
+    loadWorkshopLibrary();
     refreshWorkshop();
 });
 loadWorkshopTitles();

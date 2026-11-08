@@ -6,6 +6,7 @@ const confirmButton = byId('action-confirm');
 const roster = byId('moderation-roster');
 const rosterStatus = byId('moderation-roster-status');
 const refreshButton = byId('refresh-roster');
+const accessButton = byId('refresh-access');
 const actionButtons = document.querySelectorAll('[data-operation]');
 const operations = {
     'kick-player': {
@@ -50,6 +51,7 @@ const operations = {
     },
 };
 let rosterRequest = 0;
+let accessRequest = 0;
 let reviewedAction;
 let running = false;
 let playerNames = new Map();
@@ -95,6 +97,53 @@ function makePlayerRow(player) {
     return row;
 }
 
+function renderAccessList(target, ids, empty) {
+    target.replaceChildren();
+    if (!ids.length) {
+        const cell = target.insertRow().insertCell();
+        cell.colSpan = 2;
+        cell.textContent = empty;
+        return;
+    }
+    for (const id of ids) {
+        const row = target.insertRow();
+        row.dataset.steamId = id;
+        row.insertCell().textContent = playerNames.get(id) || 'Name unavailable';
+        row.insertCell().textContent = id;
+    }
+}
+
+async function refreshAccessLists() {
+    const request = ++accessRequest;
+    const status = byId('access-status');
+    const bans = byId('saved-bans');
+    const kicks = byId('tracked-kicks');
+    accessButton.disabled = true;
+    try {
+        const response = await panelFetch('/moderation/access', {signal: AbortSignal.timeout(5000)});
+        if (!response.ok) throw new Error('Access lists unavailable');
+        const access = await response.json();
+        if (request !== accessRequest) return;
+        renderAccessList(bans, access.bans, 'No saved bans found.');
+        renderAccessList(kicks, access.kicks, access.kick_tracking ? 'No panel kicks recorded.' : 'Kick tracking unavailable.');
+        status.textContent = access.bans_incomplete ? 'Some configured ban files could not be fully read.' : '';
+        const ids = [...new Set([...access.bans, ...access.kicks])].filter(id => !playerNames.get(id));
+        for (let offset = 0; offset < ids.length; offset += 64) {
+            const names = await panelLabels('/players/names', ids.slice(offset, offset + 64), 'names');
+            if (request !== accessRequest) return;
+            for (const [id, name] of Object.entries(names)) playerNames.set(id, name);
+            for (const row of [...bans.rows, ...kicks.rows]) {
+                const name = playerNames.get(row.dataset.steamId);
+                if (name) row.cells[0].textContent = name;
+            }
+        }
+    } catch {
+        if (request === accessRequest) status.textContent = 'Could not refresh bans and kicks.';
+    } finally {
+        if (request === accessRequest) accessButton.disabled = false;
+    }
+}
+
 async function refreshRoster() {
     const request = ++rosterRequest;
     refreshButton.disabled = true;
@@ -103,7 +152,9 @@ async function refreshRoster() {
         if (request !== rosterRequest) return;
         const players = result.response?.Players;
         if (!ok || !Array.isArray(players)) throw new Error('Roster unavailable');
-        playerNames = new Map(players.map(player => [player?.steamId, player?.displayName || playerNames.get(player?.steamId)]));
+        for (const player of players) {
+            if (player?.steamId && player.displayName) playerNames.set(player.steamId, player.displayName);
+        }
         byId('moderation-players').replaceChildren(...players.map(makePlayerRow));
         roster.hidden = !players.length;
         rosterStatus.textContent = players.length
@@ -163,6 +214,7 @@ async function runAction(action) {
             status.dataset.state = 'success';
             status.textContent = `${action.label} succeeded.`;
             if (action.data?.steam_id) refreshRoster();
+            if (action.data?.steam_id || action.status === 'list-status') refreshAccessLists();
         }
     } catch {
         status.dataset.state = 'error';
@@ -216,5 +268,7 @@ byId('reload-config').addEventListener('submit', (event) => {
 operation.addEventListener('change', updatePlayerOperation);
 steamId.addEventListener('input', updateSelection);
 refreshButton.addEventListener('click', refreshRoster);
+accessButton.addEventListener('click', refreshAccessLists);
 updatePlayerOperation();
 refreshRoster();
+refreshAccessLists();

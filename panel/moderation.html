@@ -59,9 +59,39 @@
             </section>
         </div>
 
+        <section class="card moderation-access" aria-labelledby="access-heading">
+            <div class="card-heading">
+                <h2 id="access-heading">Bans &amp; kicks</h2>
+                <button type="button" id="refresh-access">Refresh lists</button>
+            </div>
+            <p class="meta" id="access-status" role="status">Loading access lists…</p>
+            <div class="moderation-layout">
+                <div>
+                    <h3 id="saved-bans-heading">Saved bans</h3>
+                    <p class="meta">From the configured ban files. Clearing active bans leaves these entries on disk.</p>
+                    <div class="table-wrap">
+                        <table aria-labelledby="saved-bans-heading">
+                            <thead><tr><th scope="col">Player</th><th scope="col">Steam ID</th></tr></thead>
+                            <tbody id="saved-bans"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div>
+                    <h3 id="tracked-kicks-heading">Panel kicks</h3>
+                    <p class="meta">Kicks issued through this panel since the last game server restart.</p>
+                    <div class="table-wrap">
+                        <table aria-labelledby="tracked-kicks-heading">
+                            <thead><tr><th scope="col">Player</th><th scope="col">Steam ID</th></tr></thead>
+                            <tbody id="tracked-kicks"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <div class="moderation-layout moderation-tools">
             <details class="card">
-                <summary>Ban and kick lists</summary>
+                <summary>Ban and kick controls</summary>
                 <p class="meta">Manage access rules for more than one player.</p>
                 <div class="tool-row">
                     <div><strong>Reload ban files</strong><p class="meta">Adds entries from the configured files to the active bans.</p></div>

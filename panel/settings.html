@@ -16,7 +16,7 @@
                 <h1>Settings &amp; missions</h1>
                 <p class="meta">Manage the mission rotation and server settings.</p>
             </div>
-            <div class="actions settings-jump"><a href="#picker-title">Add missions</a><a href="#server-settings">Server settings</a></div>
+            <div class="actions settings-jump"><a href="#picker-title">Add missions</a><a href="#available-title">Available missions</a><a href="#server-settings">Server settings</a></div>
         </header>
         <div class="settings-layout mission-workspace">
             <section class="card mission" id="mission-rotation" aria-labelledby="rotation-title"
@@ -25,7 +25,7 @@
                     <h2 id="rotation-title">Mission rotation</h2>
                     <button type="button" id="save" class="primary">Save rotation</button>
                 </div>
-                <p class="meta">Queue a mission for the next round or switch to it now. Save the rotation to keep changes to its order or time limits.</p>
+                <p class="meta">Queue a mission for the next round or switch to it now. Save the rotation to keep removals, ordering, and time limits.</p>
                 <p role="status" id="status" class="settings-feedback"></p>
                 <label class="field">Rotation order
                     <select id="rotation-type">
@@ -34,7 +34,7 @@
                         <option value="2">Shuffle (play each before repeating)</option>
                     </select>
                 </label>
-                <p id="rotation-empty" class="meta" hidden>Use Add missions to build your rotation.</p>
+                <p id="rotation-empty" class="meta" hidden>Add at least one mission before saving the rotation.</p>
                 <ol id="rotation" class="rotation-list" aria-label="Mission rotation"></ol>
             </section>
             <section class="card" aria-labelledby="picker-title">
@@ -105,6 +105,16 @@
                     <a href="#add" id="use-saved-mission" hidden>Go to Add to rotation</a>
                 </details>
             </section>
+            <section class="card" id="downloaded-workshop" aria-labelledby="available-title" data-url="{{ url_for('downloaded_workshop') }}">
+                <div class="card-heading"><h2 id="available-title">Available missions</h2><button type="button" id="refresh-workshop-library">Refresh</button></div>
+                <label class="field">Mission source <select id="available-source">
+                    <option value="">All available missions</option><option value="Workshop">Downloaded Workshop missions</option>
+                    <option value="BuiltIn">Built-in</option><option value="User">Local scenarios</option>
+                </select></label>
+                <p class="meta command-status" id="workshop-library-status" role="status"></p>
+                <p role="status" id="library-action-status" class="settings-feedback"></p>
+                <ul id="workshop-library" class="workshop-library" aria-label="Available missions" hidden></ul>
+            </section>
         </div>
         <section class="card server-configuration" id="server-settings" aria-labelledby="server-options-title">
             <div class="card-heading">
@@ -161,11 +171,16 @@
             </details>
         </section>
         <dialog class="card action-dialog" id="switch-mission-dialog" aria-labelledby="switch-mission-title" aria-describedby="switch-mission-help">
-            <form method="dialog">
+            <form method="dialog" id="switch-mission-form">
                 <h2 id="switch-mission-title">Switch mission now?</h2>
                 <p id="switch-mission-help"></p>
+                <label for="switch-delay">Warning delay (seconds)</label>
+                <input id="switch-delay" type="number" min="0" max="3600" step="1" value="30" required>
+                <label for="switch-message">Message to players (optional)</label>
+                <input id="switch-message" maxlength="240" placeholder="Get ready for the next mission">
+                <p class="meta">The panel announces known mod requirements to connected players in chat.</p>
                 <div class="actions">
-                    <button value="cancel" autofocus>Cancel</button>
+                    <button value="cancel" autofocus formnovalidate>Cancel</button>
                     <button value="confirm" class="danger">End current mission and switch</button>
                 </div>
             </form>
@@ -235,7 +250,15 @@
                 }
                 const play = document.createElement('div');
                 play.className = 'actions rotation-play';
-                play.append(queue, switchNow);
+                const remove = action('Remove', () => {
+                    rotation.splice(index, 1);
+                    showRotation();
+                    byId('status').textContent = 'Mission removed from the draft. Choose Save rotation to apply it.';
+                });
+                remove.dataset.missionAction = '';
+                remove.disabled = byId('mission-rotation').dataset.busy === 'true';
+                remove.setAttribute('aria-describedby', title.id);
+                play.append(queue, switchNow, remove);
                 const heading = document.createElement('div');
                 heading.className = 'rotation-row';
                 heading.append(identity, play);
@@ -250,10 +273,8 @@
                 label.append(seconds);
                 const controls = document.createElement('div');
                 controls.className = 'actions';
-                controls.append(label,
-                    action('Up', () => move(index, -1), index === 0),
-                    action('Down', () => move(index, 1), index === rotation.length - 1),
-                    action('Remove', () => { rotation.splice(index, 1); showRotation(); }));
+                controls.append(label, action('Up', () => move(index, -1), index === 0),
+                    action('Down', () => move(index, 1), index === rotation.length - 1));
                 const edit = document.createElement('details');
                 edit.open = openRotationEdits.has(mission);
                 edit.addEventListener('toggle', () => {
@@ -266,6 +287,7 @@
                 item.append(heading, edit);
                 return item;
             }));
+            document.dispatchEvent(new Event('rotation-rendered'));
         }
 
         function selectedMission() {
@@ -342,7 +364,7 @@
         byId('save-options').addEventListener('click', saveServerSettings);
         byId('next').addEventListener('click', (event) => {
             const mission = selectedMission();
-            if (mission.Key.Group === 'Workshop') handleWorkshopAction(event.currentTarget, mission, true);
+            if (mission.Key.Group === 'Workshop' && mission.Key.Name !== readyWorkshopSelection) handleWorkshopAction(event.currentTarget, mission, true);
             else queueRotationMission(event.currentTarget, mission, byId('picker-status'));
         });
         showRotation();

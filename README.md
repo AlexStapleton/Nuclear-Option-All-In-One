@@ -4,9 +4,9 @@ Run the official Nuclear Option dedicated server on an x86-64 Linux host and man
 
 - **One-command start.** The launcher creates the initial server configuration, generates a panel password, and starts both containers. SteamCMD checks for game updates when the server container starts.
 - **Server settings.** Set a game join password, player limit, visibility, mission timing, vote-kick rules, ban lists, and game or query port overrides.
-- **Mission rotation.** Choose built-in missions, import and edit a local JSON or ZIP, or add a Steam Workshop item. Review and install the mission's server mods and maps from the same catalog NOMM uses.
+- **Mission rotation.** Browse built-in, local, and downloaded Workshop missions. Add them to the rotation or queue a one-time run. Switch early with a configurable countdown, a chat message, and a warning for known mod requirements.
 - **Mod management.** See which missions use each mod, review dependency changes before updating, and pin exact versions in separate saved sets. Record requirements for local scenarios.
-- **Moderation.** See connected players by Steam display name and ID. Select a player or enter an ID to kick, ban, or restore access.
+- **Moderation.** See connected players, saved bans, and kicks issued by the panel with Steam IDs and display names when available.
 - **LAN admin access.** Open `http://LINUX_LAN_IP:5000` from your browser. The game's remote-command port stays inside the stack.
 - **Live server logs.** Check Steam updates, game startup, and mission-loading messages under **Server logs**.
 - **Configurable storage.** Game files, settings, and custom missions live in `./server` by default. Set `SERVER_DATA_DIR` in `.env` to choose another host folder.

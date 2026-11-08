@@ -20,6 +20,11 @@
         </section>
         <section class="card">
             <h2>Recent output</h2>
+            <label for="log-source">Log source</label>
+            <select id="log-source">
+                <option value="game">Game server</option>
+                <option value="mods">Mod loader (BepInEx)</option>
+            </select>
             <div class="actions">
                 <button id="log-refresh" type="button">Refresh now</button>
                 <button id="log-pause" type="button" aria-pressed="false">Pause updates</button>

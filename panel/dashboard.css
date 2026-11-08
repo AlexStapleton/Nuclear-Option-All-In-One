@@ -87,7 +87,11 @@ footer { padding-block: 1.2rem 2rem; }
 .settings-feedback:not(:empty) { margin: 0 0 1rem; padding: .75rem 1rem; border-left: 3px solid var(--accent); background: var(--panel); }
 .settings-feedback:empty { margin: 0; }
 .actions.settings-jump { gap: .6rem 1rem; }
-.mission-workspace { grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); }
+.mission-workspace > .mission { grid-column: 1 / -1; }
+@media (min-width: 70rem) {
+    .mission-workspace { grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr) minmax(0, 1fr); }
+    .mission-workspace > .mission { grid-column: auto; }
+}
 .mission-workspace .card-heading .primary, .server-configuration .card-heading .primary { margin-top: 0; }
 .mission-workspace .settings-feedback:not(:empty) { margin: .65rem 0; background: #0d1721; }
 .mission-source { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid var(--line); }
@@ -108,6 +112,11 @@ footer { padding-block: 1.2rem 2rem; }
 .workshop-mods li { padding: .3rem 0; overflow-wrap: anywhere; }
 .workshop-mods li .meta { display: block; }
 .workshop-mods > p:last-child { margin-top: .65rem; }
+.workshop-library { list-style: none; padding: 0; margin: .6rem 0 0; max-height: 20rem; overflow: auto; }
+.workshop-library li { display: flex; justify-content: space-between; align-items: center; gap: .7rem; border-top: 1px solid var(--line); padding: .5rem 0; }
+.workshop-library strong { overflow-wrap: anywhere; }
+.workshop-library .actions { flex-shrink: 0; }
+.workshop-library button { padding: .35rem .55rem; font-size: .85rem; }
 .mod-tools { margin-top: 1rem; }
 .mod-filter { max-width: 26rem; margin-top: .85rem; }
 .mod-set-label { margin: .5rem 0; font-weight: 700; }
@@ -149,6 +158,10 @@ footer { padding-block: 1.2rem 2rem; }
 .card-heading h2 { margin: 0; }
 .moderation-layout { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
 .moderation-tools { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 1rem; }
+.moderation-access { margin-top: 1rem; }
+.moderation-access .moderation-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.moderation-access td:first-child { font-family: inherit; overflow-wrap: anywhere; }
+.moderation-access td:nth-child(2) { font-family: ui-monospace, monospace; }
 .moderation-tools summary, .command-details summary { cursor: pointer; font-weight: 700; }
 .moderation-tools summary + p, .command-details summary + p { margin-top: .65rem; }
 .player-action label:not(:first-child), #ban-reason-field { margin-top: .75rem; }
@@ -169,10 +182,11 @@ footer { padding-block: 1.2rem 2rem; }
 .action-dialog .actions { justify-content: flex-end; }
 #response-area { background: #0d1721; border: 1px solid var(--line); border-radius: .5rem; max-height: 45vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: .8rem; margin-bottom: 0; }
 #log-status { margin-top: .75rem; }
+#log-source { width: min(100%, 20rem); margin-bottom: .75rem; }
 #server-log { background: #0d1721; border: 1px solid var(--line); border-radius: .5rem; min-height: 12rem; max-height: 60vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: .8rem; margin-bottom: 0; }
 
 @media (max-width: 44rem) {
     .hero { padding-top: 1.65rem; }
     .connection .meta { text-align: left; }
-    .overview, .details, .settings-layout, .moderation-layout { grid-template-columns: 1fr; }
+    .overview, .details, .settings-layout, .moderation-layout, .moderation-access .moderation-layout { grid-template-columns: 1fr; }
 }

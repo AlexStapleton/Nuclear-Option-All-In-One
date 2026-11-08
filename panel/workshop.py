@@ -240,11 +240,14 @@ def item_details(identifier):
     return describe_item(items[0] if items else None)
 
 
-def has_mission_file(data_dir, identifier, limit):
-    cache = data_dir / "steamapps" / "workshop" / "content" / str(APP_ID) / identifier
-    cache = cache.resolve()
-    if not cache.is_relative_to(data_dir.resolve()) or not cache.is_dir():
-        return False
+def cache_root(data_dir):
+    root = (data_dir / "steamapps" / "workshop" / "content" / str(APP_ID)).resolve()
+    return root if root.is_relative_to(data_dir.resolve()) and root.is_dir() else None
+
+
+def find_mission_file(cache, limit):
+    if cache.resolve() != cache or not cache.is_dir():
+        return None
     for file in cache.rglob("*"):
         if (file.suffix.lower() != ".json" or file.name.lower() == "meta.json"
                 or not file.is_file() or not file.resolve().is_relative_to(cache)):
@@ -255,7 +258,32 @@ def has_mission_file(data_dir, identifier, limit):
             if len(raw) <= limit:
                 mission = json.loads(raw)
                 if isinstance(mission, dict) and isinstance(mission.get("missionSettings"), dict):
-                    return True
+                    return file
         except (OSError, ValueError, RecursionError):
             continue
-    return False
+    return None
+
+
+def cached_mission_file(data_dir, identifier, limit):
+    root = cache_root(data_dir)
+    if root is None:
+        return None
+    cache = root / identifier
+    return find_mission_file(cache, limit) if cache.parent == root else None
+
+
+def downloaded_missions(data_dir, limit):
+    root = cache_root(data_dir)
+    if root is None:
+        return {}
+    missions = {}
+    for folder in root.iterdir():
+        try:
+            if folder.name != item_id(folder.name):
+                continue
+            mission = find_mission_file(folder, limit)
+        except (OSError, ValueError):
+            continue
+        if mission:
+            missions[folder.name] = mission.stem
+    return missions

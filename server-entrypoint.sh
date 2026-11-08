@@ -76,6 +76,10 @@ args=(-logFile - -limitframerate 60 -DedicatedServer /server/DedicatedServerConf
 while :; do
     selected=$(selected_mod_set)
     profile=/server/.panel-mods/$selected
+    if ! (umask 022; cat /proc/sys/kernel/random/uuid > .panel-logs/.game-instance.tmp &&
+          mv -f -- .panel-logs/.game-instance.tmp .panel-logs/game-instance); then
+        printf '%s\n' '[Nuclear Option] Could not initialize panel kick tracking.' >&2
+    fi
     if [[ -n $selected && ! -L .panel-mods && ! -L $profile && -f $profile/libdoorstop.so &&
           -f $profile/BepInEx/core/BepInEx.Preloader.dll ]]; then
         printf '[Nuclear Option] Starting with mod set %s.\n' "$selected"
