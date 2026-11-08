@@ -104,8 +104,17 @@ footer { padding-block: 1.2rem 2rem; }
 .workshop-mods > p:last-child { margin-top: .65rem; }
 .mod-tools { margin-top: 1rem; }
 .mod-filter { max-width: 26rem; margin-top: .85rem; }
-.mod-table td { vertical-align: top; overflow-wrap: anywhere; }
+.mod-set-label { margin: .5rem 0; font-weight: 700; }
+.mod-table { table-layout: fixed; min-width: 40rem; }
+.mod-table th:first-child { width: 28%; }
+.mod-table thead th:nth-child(2) { width: 30%; }
+.mod-table tbody th, .mod-table td { vertical-align: top; overflow-wrap: anywhere; }
+.mod-table tbody th { color: var(--text); font-size: .95rem; }
 .mod-table .meta { display: block; margin-top: .3rem; }
+.mod-role { display: table; border: 1px solid var(--line); border-radius: .35rem; color: var(--muted); font-size: .78rem; margin-top: .45rem; padding: .15rem .4rem; }
+.mod-table details { margin-top: .35rem; }
+.mod-table summary { cursor: pointer; color: var(--accent); font-size: .85rem; }
+.mod-review-update { margin-top: .45rem; padding: .35rem .55rem; font-size: .85rem; }
 .mod-list { padding-left: 1.2rem; margin: .55rem 0; }
 .mod-table .mod-list { margin: 0; }
 .mod-list li + li { margin-top: .35rem; }

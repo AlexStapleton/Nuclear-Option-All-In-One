@@ -21,6 +21,7 @@ BEPINEX = {
     "url": "https://github.com/BepInEx/BepInEx/releases/download/v5.4.23.5/BepInEx_linux_x64_5.4.23.5.zip",
     "hash": "sha256:e538560be65739f562519ab518a75f9c65b3f57f87457403ae7cde683c12dab7",
 }
+LOADER_ID = "panel-bepinex"
 SET_ID = re.compile(r"[a-f0-9]{32}")
 PACKAGE_ID = re.compile(r"[a-z0-9][a-z0-9._-]{0,119}")
 MOD_LIMIT = 48
@@ -47,14 +48,7 @@ def release_asset(package, artifact):
             "name": package.get("displayName") or package["id"], "game_version": artifact.get("gameVersion")}
 
 
-def make_plan(identifier, overrides):
-    details = workshop.item_details(identifier)
-    mods = details.get("mods", {})
-    requirements = mods.get("requirements", [])
-    if not requirements or mods.get("catalog_unavailable"):
-        raise ValueError("No dependency list is available. Check the Steam item and mod catalog first.")
-
-    catalog = workshop.mod_catalog(int(time.monotonic() // 600))
+def server_releases(catalog):
     packages = {entry["id"].lower(): entry for entry in catalog
                 if isinstance(entry.get("id"), str) and PACKAGE_ID.fullmatch(entry["id"].lower())}
     releases = {}
@@ -70,6 +64,39 @@ def make_plan(identifier, overrides):
             if asset:
                 releases[key].append((asset, artifact))
         releases[key].sort(key=lambda item: version_key(item[0]["version"]), reverse=True)
+    return releases
+
+
+def dependency_requirements(key, artifact):
+    dependencies = artifact.get("dependencies") or []
+    parent = artifact.get("extends")
+    if not isinstance(dependencies, list):
+        raise ValueError(f"The catalog has invalid dependencies for {key}.")
+    requirements = []
+    for dependency in [*dependencies, *([parent] if parent else [])]:
+        if not isinstance(dependency, dict) or not isinstance(dependency.get("id"), str):
+            raise ValueError(f"The catalog has an invalid dependency for {key}.")
+        target = dependency["id"].lower()
+        minimum = dependency.get("version")
+        if not PACKAGE_ID.fullmatch(target) or (minimum and not version_key(minimum)):
+            raise ValueError(f"The catalog has an unsupported dependency requirement for {key}.")
+        requirements.append((target, minimum))
+    return requirements
+
+
+def identify_plan(plan):
+    plan["id"] = hashlib.sha256(json.dumps(plan, sort_keys=True).encode()).hexdigest()[:32]
+    return plan
+
+
+def make_plan(identifier, overrides):
+    details = workshop.item_details(identifier)
+    mods = details.get("mods", {})
+    requirements = mods.get("requirements", [])
+    if not requirements or mods.get("catalog_unavailable"):
+        raise ValueError("No dependency list is available. Check the Steam item and mod catalog first.")
+
+    releases = server_releases(workshop.mod_catalog(int(time.monotonic() // 600)))
 
     pinned = {}
     choices = []
@@ -119,13 +146,8 @@ def make_plan(identifier, overrides):
         visiting.add(key)
         try:
             parent = artifact.get("extends")
-            dependencies = artifact.get("dependencies") or []
-            if not isinstance(dependencies, list):
-                raise ValueError(f"The catalog has invalid dependencies for {key}.")
-            for dependency in [*dependencies, *([parent] if parent else [])]:
-                if not isinstance(dependency, dict) or not isinstance(dependency.get("id"), str):
-                    raise ValueError(f"The catalog has an invalid dependency for {key}.")
-                resolve(dependency["id"].lower(), dependency.get("version"))
+            for target, minimum in dependency_requirements(key, artifact):
+                resolve(target, minimum)
             resolved[key] = {**asset, "id": key, "parent": parent["id"].lower() if parent else None}
         finally:
             visiting.remove(key)
@@ -141,8 +163,85 @@ def make_plan(identifier, overrides):
     plan = {"item": identifier, "title": details.get("title") or identifier, "choices": choices,
             "overrides": {choice["id"]: overrides[choice["id"]] for choice in choices if choice["id"] in overrides},
             "problems": problems, "assets": assets}
-    plan["id"] = hashlib.sha256(json.dumps(plan, sort_keys=True).encode()).hexdigest()[:32]
-    return plan
+    return identify_plan(plan)
+
+
+def update_plan(selected, package, version, catalog):
+    """Preview one update and reconcile its dependencies across the whole server set."""
+    releases = server_releases(catalog)
+    current = {asset["id"]: asset for asset in selected["assets"] if "id" in asset}
+    loader = next((asset for asset in selected["assets"] if "id" not in asset), BEPINEX)
+    offered = releases.get(package, [])
+    if (package not in current or not offered or offered[0][0]["version"] != version
+            or version_key(version) <= version_key(current[package]["version"])):
+        raise ValueError("That update is no longer available for this server set. Check for updates again.")
+
+    chosen = {}
+    for key, asset in current.items():
+        if key == package:
+            chosen[key] = offered[0]
+            continue
+        match = next((release for release in releases.get(key, [])
+                      if release[0]["version"] == asset["version"] and release[0]["hash"] == asset.get("hash")), None)
+        if not match:
+            raise ValueError(f"Cannot verify the current release for {asset['name']}. Review a fresh mission install plan.")
+        chosen[key] = match
+
+    # Recheck every package after a dependency changes. Versions only increase,
+    # and an explicit update target remains pinned to the version reviewed.
+    for _ in range(MOD_LIMIT * 2):
+        changed = False
+        for key, (_, artifact) in list(chosen.items()):
+            for target, minimum in dependency_requirements(key, artifact):
+                previous = chosen.get(target)
+                if previous and (not minimum or version_key(previous[0]["version"]) >= version_key(minimum)):
+                    continue
+                if target == package:
+                    raise ValueError(f"{chosen[key][0]['name']} requires a newer version than the selected update.")
+                options = releases.get(target, [])
+                replacement = next((item for item in reversed(options)
+                                    if version_key(item[0]["version"]) >= version_key(minimum)), None) if minimum else next(iter(options), None)
+                if not replacement:
+                    required = f" v{minimum} or newer" if minimum else ""
+                    raise ValueError(f"{chosen[key][0]['name']} requires {target}{required}, which the catalog cannot supply.")
+                chosen[target] = replacement
+                changed = True
+                if len(chosen) > MOD_LIMIT:
+                    raise ValueError("This mod set exceeds the supported package limit.")
+        if not changed:
+            break
+    else:
+        raise ValueError("The catalog dependencies could not be resolved into one mod set.")
+
+    ordered = {}
+    visiting = set()
+
+    def order(key):
+        if key in ordered:
+            return
+        if key in visiting:
+            raise ValueError(f"The catalog has a circular dependency involving {key}.")
+        visiting.add(key)
+        asset, artifact = chosen[key]
+        for target, _ in dependency_requirements(key, artifact):
+            order(target)
+        parent = artifact.get("extends")
+        ordered[key] = {**asset, "id": key, "parent": parent["id"].lower() if parent else None}
+        visiting.remove(key)
+
+    for key in chosen:
+        order(key)
+    changes = []
+    for key, asset in ordered.items():
+        old = current.get(key, {}).get("version")
+        if old != asset["version"]:
+            changes.append({"id": key, "name": asset["name"], "from": old, "to": asset["version"],
+                            "requested": key == package, "game_version": asset["game_version"]})
+    requirements = [{"name": ordered[target]["name"], "minimum": minimum, "version": ordered[target]["version"]}
+                    for target, minimum in dependency_requirements(package, offered[0][1])]
+    return identify_plan({"item": selected["item"], "title": selected["title"], "base_id": selected["id"],
+                          "choices": [], "overrides": selected.get("overrides", {}), "problems": [],
+                          "assets": [loader, *ordered.values()], "changes": changes, "requirements": requirements})
 
 
 def mod_root(data_dir):

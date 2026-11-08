@@ -20,13 +20,15 @@
         <section class="card" aria-labelledby="inventory-title">
             <div class="card-heading">
                 <h2 id="inventory-title">Dependency inventory</h2>
-                <button type="button" id="refresh-inventory">Refresh inventory</button>
+                <button type="button" id="refresh-inventory">Check for updates</button>
             </div>
+            <p class="mod-set-label" id="inventory-set">Checking the server mod set…</p>
             <p class="meta" id="inventory-status" role="status">Checking mission requirements…</p>
+            <p class="meta" id="update-check-status" role="status"></p>
             <label class="field mod-filter">Filter by mod or mission <input type="search" id="mod-filter"></label>
             <div class="table-wrap" id="inventory-table" hidden>
                 <table class="mod-table">
-                    <thead><tr><th scope="col">Mod</th><th scope="col">Role and selected version</th><th scope="col">Used by</th></tr></thead>
+                    <thead><tr><th scope="col">Mod</th><th scope="col">Version and updates</th><th scope="col">Missions and dependencies</th></tr></thead>
                     <tbody id="inventory-rows"></tbody>
                 </table>
             </div>
@@ -46,9 +48,11 @@
                     <button type="submit" id="review-mods">Review server install</button>
                 </form>
                 <div id="workshop-mod-plan" hidden>
+                    <h3 id="mod-plan-heading" tabindex="-1">Review install</h3>
                     <div id="workshop-mod-choices"></div>
                     <p id="workshop-mod-problems" class="meta" role="status"></p>
                     <ul id="workshop-mod-assets" class="mod-list"></ul>
+                    <p id="mod-plan-requirements" class="meta" hidden></p>
                     <p class="meta">Catalog game versions show which game release each package was published for. Installing switches the server to this set and restarts the game.</p>
                     <button type="button" id="install-mods" class="primary" disabled>Install and restart server</button>
                 </div>

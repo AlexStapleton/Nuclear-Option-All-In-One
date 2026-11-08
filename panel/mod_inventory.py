@@ -6,11 +6,13 @@ import server_mods
 import workshop
 
 
-LOADER_ID = "panel-bepinex"
+LOADER_ID = server_mods.LOADER_ID
 
 
-def catalog():
+def catalog(refresh=False):
     try:
+        if refresh:
+            workshop.mod_catalog.cache_clear()
         return workshop.mod_catalog(int(monotonic() // 600)), True
     except (OSError, ValueError, RecursionError):
         return [], False
@@ -33,6 +35,7 @@ def artifact_for(package, version):
 
 def build(items, workshop_ids, local, local_rotation, declarations, selected, entries, catalog_available):
     packages = package_index(entries)
+    releases = server_mods.server_releases(entries)
     selected_assets = {asset.get("id", LOADER_ID): asset for asset in (selected or {}).get("assets", [])}
     selected_item = (selected or {}).get("item")
     mods = {}
@@ -43,21 +46,27 @@ def build(items, workshop_ids, local, local_rotation, declarations, selected, en
         package = packages.get(key, {})
         installed = selected_assets.get(key, {})
         name = installed.get("name") or package.get("displayName") or label or key
+        latest = releases.get(key, [])
+        version = latest[0][0]["version"] if latest else None
+        current = installed.get("version")
         return mods.setdefault(key, {"id": key, "name": name, "selected_version": installed.get("version"),
+                                     "latest_version": version,
+                                     "update_available": bool(current and version and server_mods.version_key(current)
+                                                              and server_mods.version_key(version) > server_mods.version_key(current)),
                                      "used_by": {}, "supports": set()})
 
-    def link(key, mission, kind):
+    def link(key, mission, kind, requested_version=None):
         uses = mods[key]["used_by"]
         label = (mission["source"], mission["key"])
         if label not in uses or kind == "Direct":
             uses[label] = {"mission": mission["title"], "source": mission["source"],
-                           "rotation": mission["rotation"], "kind": kind}
+                           "rotation": mission["rotation"], "kind": kind, "requested_version": requested_version}
 
     def visit(key, mission, versions, version=None, trail=()):
         if key in trail or len(trail) >= server_mods.MOD_LIMIT:
             return
         mod(key)
-        link(key, mission, "Dependency" if trail else "Direct")
+        link(key, mission, "Dependency" if trail else "Direct", None if trail else version)
         if not trail:
             mod(LOADER_ID, server_mods.BEPINEX["name"])["supports"].add(key)
             link(LOADER_ID, mission, "Dependency")
@@ -136,5 +145,6 @@ def build(items, workshop_ids, local, local_rotation, declarations, selected, en
         entry["role"] = "Foundation" if entry["supports"] else "Shared" if len(uses) > 1 else "Mission specific"
     sorted_mods = sorted(mods.values(), key=lambda entry: (not entry["supports"], -len(entry["used_by"]), entry["name"].casefold()))
     return {"mods": sorted_mods, "missions": coverage, "local": local, "declarations": declarations,
+            "selected_title": (selected or {}).get("title"),
             "packages": sorted(({"id": key, "name": entry.get("displayName") or key} for key, entry in packages.items()),
                                key=lambda entry: entry["name"].casefold()), "catalog_available": catalog_available}

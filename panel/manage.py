@@ -367,7 +367,7 @@ def mod_inventory_data():
         items = workshop.cached_items(DATA_DIR, lookup_ids)
         declarations = workshop.read_metadata(DATA_DIR / ".panel-mission-mods.json")
         declarations = {name: declarations[name] for name in local if name in declarations}
-        packages, available = mod_inventory.catalog()
+        packages, available = mod_inventory.catalog(refresh=request.args.get("check") == "1")
         return jsonify(mod_inventory.build(items, ids, local, local_rotation, declarations, selected, packages, available))
     except (OSError, ValueError, TypeError, KeyError):
         return jsonify(message="Could not read the mission and mod inventory."), 503
@@ -439,16 +439,28 @@ def manage_mods():
     if not isinstance(data, dict):
         return jsonify(message="Choose a mod action."), 400
     action = data.get("action")
-    if action == "preview":
+    if action in ("preview", "preview_update"):
         try:
-            identifier = workshop.item_id(data["item"].strip())
-            overrides = data.get("overrides", {})
-            if not isinstance(overrides, dict) or len(overrides) > 24:
-                raise ValueError("Choose valid replacement versions.")
-            if any(not server_mods.PACKAGE_ID.fullmatch(key) or not server_mods.version_key(value)
-                   for key, value in overrides.items()):
-                raise ValueError("Choose valid replacement versions.")
-            plan = server_mods.make_plan(identifier, overrides)
+            if action == "preview_update":
+                package, version = data.get("package"), data.get("version")
+                if not isinstance(package, str) or not server_mods.PACKAGE_ID.fullmatch(package) or not server_mods.version_key(version):
+                    raise ValueError("Choose a valid mod update.")
+                selected = server_mods.selected_set(DATA_DIR)
+                if not selected:
+                    raise ValueError("Enable a server mod set before reviewing updates.")
+                entries, available = mod_inventory.catalog()
+                if not available:
+                    return jsonify(message="Could not read the mod catalog. Try again."), 503
+                plan = server_mods.update_plan(selected, package, version, entries)
+            else:
+                identifier = workshop.item_id(data["item"].strip())
+                overrides = data.get("overrides", {})
+                if not isinstance(overrides, dict) or len(overrides) > 24:
+                    raise ValueError("Choose valid replacement versions.")
+                if any(not server_mods.PACKAGE_ID.fullmatch(key) or not server_mods.version_key(value)
+                       for key, value in overrides.items()):
+                    raise ValueError("Choose valid replacement versions.")
+                plan = server_mods.make_plan(identifier, overrides)
         except (ValueError, KeyError, AttributeError) as error:
             return jsonify(message=str(error) if isinstance(error, ValueError) else "Choose a Workshop mission."), 400
         except OSError:
@@ -457,7 +469,8 @@ def manage_mods():
             mod_plan = plan
         assets = [{key: asset.get(key) for key in ("name", "version", "game_version")} for asset in plan["assets"]]
         return jsonify(id=plan["id"], assets=assets, choices=plan["choices"],
-                       problems=plan["problems"], overrides=plan["overrides"])
+                       problems=plan["problems"], overrides=plan["overrides"],
+                       changes=plan.get("changes", []), requirements=plan.get("requirements", []))
 
     with MOD_LOCK:
         if mod_job["running"]:
@@ -476,6 +489,8 @@ def manage_mods():
                 return jsonify(message="Could not read the selected mod set."), 503
             if selected and selected.get("id") == mod_plan["id"]:
                 return jsonify(message="This mod set is already selected. Check Server logs for its startup.")
+            if mod_plan.get("base_id") and (not selected or selected.get("id") != mod_plan["base_id"]):
+                return jsonify(message="The server mod set changed. Check for updates and review the new plan."), 409
             mod_job.update(running=True, message="Preparing the mod set…")
             Thread(target=install_mod_set, args=(mod_plan,), daemon=True).start()
             return jsonify(message=mod_job["message"]), 202
