@@ -1,0 +1,43 @@
+name: nuclear-option
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  nuclear-option:
+    image: steamcmd/steamcmd:ubuntu-24
+    platform: linux/amd64
+    working_dir: /server
+    init: true
+    restart: unless-stopped
+    stop_signal: SIGINT
+    stop_grace_period: 30s
+    logging: *logging
+    ports:
+      - "7777:7777/udp"
+      - "7778:7778/udp"
+      - "127.0.0.1:5000:5000/tcp"
+    volumes:
+      - ./server:/server
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        steamcmd +@ShutdownOnFailedCommand 1 +force_install_dir /server +login anonymous +app_update 3930080 +quit
+        chmod +x ./NuclearOptionServer.x86_64
+        export LD_LIBRARY_PATH=/server/linux64
+        exec ./NuclearOptionServer.x86_64 -logFile - -limitframerate 60 -DedicatedServer /server/DedicatedServerConfig.json -ServerRemoteCommands 7779
+
+  panel:
+    build:
+      context: ./panel
+    restart: unless-stopped
+    logging: *logging
+    env_file: .panel.env
+    network_mode: "service:nuclear-option"
+    depends_on:
+      nuclear-option:
+        condition: service_started
+        restart: true

@@ -1,0 +1,4 @@
+/.panel.env
+/server/
+__pycache__/
+*.py[cod]
