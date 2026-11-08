@@ -196,7 +196,7 @@ async function handleWorkshopAction(button, mission, queue) {
         return;
     }
     clearPendingWorkshopQueue();
-    const otherButtons = ['save', 'save-options', queue ? 'add' : 'next'].map(byId);
+    const otherButtons = ['save', 'save-options', 'switch-mission', queue ? 'add' : 'next'].map(byId);
     if (otherButtons.some((control) => control.disabled)) return;
     otherButtons.forEach((control) => { control.disabled = true; });
     byId('status').textContent = 'Saving the Workshop mission…';
@@ -231,6 +231,44 @@ async function handleWorkshopAction(button, mission, queue) {
         refreshWorkshop();
     }
 }
+
+const switchButton = byId('switch-mission');
+const switchDialog = byId('switch-mission-dialog');
+const missionControls = ['add', 'next', 'save', 'save-options'].map(byId);
+let switchTarget;
+
+switchButton.addEventListener('click', () => {
+    if (missionControls.some(control => control.disabled)) return;
+    const mission = selectedMission();
+    if (!byId('mission-name').reportValidity() || !byId('mission-time').reportValidity()) return;
+    if (!mission.Key.Name || !(mission.MaxTime > 0)) {
+        byId('status').textContent = 'Enter a mission name and a positive time limit.';
+        return;
+    }
+    if (mission.Key.Group === 'Workshop' && mission.Key.Name === incompatibleItem) {
+        byId('status').textContent = workshopDetailsText.textContent;
+        return;
+    }
+    const name = (mission.Key.Group === 'Workshop' && workshopTitles.get(mission.Key.Name)) || mission.Key.Name;
+    byId('switch-mission-help').textContent = `End the current mission and load ${name} next? The server’s normal delay between missions applies.`;
+    switchTarget = mission;
+    switchDialog.returnValue = '';
+    switchDialog.showModal();
+});
+
+switchDialog.addEventListener('close', async () => {
+    const mission = switchTarget;
+    switchTarget = undefined;
+    if (!mission || switchDialog.returnValue !== 'confirm' || missionControls.some(control => control.disabled)) return;
+    clearPendingWorkshopQueue();
+    missionControls.forEach(control => { control.disabled = true; });
+    byId('status').textContent = 'Requesting a mission switch…';
+    try {
+        await send(switchButton, switchButton.dataset.url, mission);
+    } finally {
+        missionControls.forEach(control => { control.disabled = false; });
+    }
+});
 
 function updateMissionOptions(id, group, items) {
     const options = byId(id);

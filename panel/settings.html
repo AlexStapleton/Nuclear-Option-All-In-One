@@ -70,6 +70,7 @@
                 <div class="actions">
                     <button type="button" id="add">Add to rotation</button>
                     <button type="button" id="next">Queue as next mission</button>
+                    <button type="button" id="switch-mission" data-url="{{ url_for('switch_mission') }}">Switch mission now</button>
                 </div>
                 <div id="workshop-controls" data-url="{{ url_for('check_workshop') }}" hidden>
                     <p class="meta" id="workshop-status" role="status"></p>
@@ -149,6 +150,16 @@
             <p id="import-status" class="meta command-status" role="status"></p>
             <a href="#picker-title" id="use-saved-mission" hidden>Queue this mission or add it to the rotation</a>
         </section>
+        <dialog class="card action-dialog" id="switch-mission-dialog" aria-labelledby="switch-mission-title" aria-describedby="switch-mission-help">
+            <form method="dialog">
+                <h2 id="switch-mission-title">Switch mission now?</h2>
+                <p id="switch-mission-help"></p>
+                <div class="actions">
+                    <button value="cancel" autofocus>Cancel</button>
+                    <button value="confirm" class="danger">End current mission and switch</button>
+                </div>
+            </form>
+        </dialog>
     </main>
     <script>
         const initial = {{ initial | tojson }};

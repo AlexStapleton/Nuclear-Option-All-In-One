@@ -29,6 +29,7 @@ CONFIG_PATH = DATA_DIR / "DedicatedServerConfig.json"
 STOCK_MISSIONS = ("Altercation", "Confrontation", "Domination", "Escalation", "Terminal Control")
 MISSION_GROUPS = ("BuiltIn", "User", "Workshop", "Default", "Tutorial")
 CONFIG_LOCK = Lock()
+MISSION_LOCK = Lock()
 MOD_LOCK = Lock()
 mod_plan = None
 mod_job = {"running": False, "message": ""}
@@ -555,8 +556,17 @@ def import_mission():
 
 @app.post("/settings/next")
 def queue_mission():
+    return select_next_mission()
+
+
+@app.post("/settings/switch-mission")
+def switch_mission():
+    return select_next_mission(switch=True)
+
+
+def select_next_mission(switch=False):
     try:
-        mission = parse_mission(request.get_json())
+        mission = parse_mission(request.get_json(silent=True))
     except ValueError as error:
         return jsonify(message=str(error)), 400
     key = mission["Key"]
@@ -573,15 +583,35 @@ def queue_mission():
                     return jsonify(message=message), 409
         except (OSError, ValueError, TypeError):
             return jsonify(message="Could not verify the mission in the server data folder."), 503
-    status, _ = server_commands.set_next_mission(
-        create_remote_commander(), key["Group"], key["Name"], mission["MaxTime"],
-    )
-    if status != "Success":
-        return jsonify(message=f"Could not queue the mission. The server returned {status}."), 502
     label = key["Name"]
     if key["Group"] == "Workshop":
         label = resolve_workshop_titles([label], refresh=False).get(label, label)
-    return jsonify(message=f"Queued {label} for after the current mission.")
+
+    with MISSION_LOCK:
+        commander = create_remote_commander()
+        status, _ = server_commands.set_next_mission(commander, key["Group"], key["Name"], mission["MaxTime"])
+        if status != "Success":
+            return jsonify(message=f"Could not queue the mission. The server returned {status}."), 502
+        if not switch:
+            return jsonify(message=f"Queued {label} for after the current mission.")
+
+        status, timing = server_commands.get_mission_time(commander)
+        max_time = timing.get("maxTime") if isinstance(timing, dict) else None
+        if status != "Success" or type(max_time) not in (int, float) or not math.isfinite(max_time):
+            return jsonify(message=f"Queued {label}, but the server did not report its mission timer. Check Overview before retrying."), 502
+        if max_time <= 0:
+            return jsonify(message=f"Queued {label}. The server has no active mission timer and will use this choice the next time it loads a mission."), 202
+
+        status, missions = server_commands.get_mission(commander)
+        upcoming = missions.get("nextMission") if isinstance(missions, dict) else None
+        next_key = upcoming.get("Key") if isinstance(upcoming, dict) else None
+        if status != "Success" or not isinstance(next_key, dict) or any(next_key.get(field) != key[field] for field in ("Group", "Name")):
+            return jsonify(message=f"The server did not confirm {label} as next. Check Overview before retrying."), 502
+
+        status, _ = server_commands.set_time_remaining(commander, 1.0)
+        if status != "Success":
+            return jsonify(message=f"Queued {label}, but the server did not confirm the timer change ({status}). Check Overview before retrying."), 502
+        return jsonify(message=f"Switch requested. {label} is next after the server’s mission transition."), 202
 
 
 if __name__ == "__main__":
