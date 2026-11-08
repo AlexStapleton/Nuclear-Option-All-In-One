@@ -7,7 +7,8 @@ copy_logs() {
     tee -p >(
         cd .panel-logs
         umask 022
-        LC_ALL=C awk -v size="$(wc -c < server.log)" '
+        # mawk normally buffers pipe input before processing the first line.
+        LC_ALL=C mawk -W interactive -v size="$(wc -c < server.log)" '
             {
                 line = substr($0, 1, 16384)
                 bytes = length(line) + 1
@@ -34,6 +35,7 @@ else
     printf '%s\n' 'Could not open the panel log. Output will still go to Docker.' >&2
 fi
 
+printf '%s\n' '[Nuclear Option] Checking for a dedicated server update…'
 steamcmd +@ShutdownOnFailedCommand 1 +force_install_dir /server +login anonymous +app_update 3930080 +quit || {
     status=$?
     if [ -n "$log_pid" ]; then
@@ -46,4 +48,5 @@ steamcmd +@ShutdownOnFailedCommand 1 +force_install_dir /server +login anonymous
 }
 chmod +x ./NuclearOptionServer.x86_64
 export LD_LIBRARY_PATH=/server/linux64
+printf '%s\n' '[Nuclear Option] Starting the game server…'
 exec ./NuclearOptionServer.x86_64 -logFile - -limitframerate 60 -DedicatedServer /server/DedicatedServerConfig.json -ServerRemoteCommands 7779

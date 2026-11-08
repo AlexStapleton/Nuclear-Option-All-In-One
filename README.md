@@ -3,7 +3,7 @@
 Run the official Nuclear Option dedicated server on an x86-64 Linux host and manage it from a browser on your Windows PC. Docker Compose runs the game server and Shockfront's web control panel together.
 
 - **One-command start.** The launcher creates the initial server configuration, generates a panel password, and starts both containers. SteamCMD checks for game updates when the server container starts.
-- **Browser administration.** See live mission and player information, send announcements, rename the server, and manage its rotation. Select stock missions and local scenarios or add Steam Workshop links. Use **Moderation** to kick or ban players and manage server access.
+- **Browser administration.** See live mission and player information, send announcements, and set a game join password. Import and edit saved missions, manage the rotation, or add Steam Workshop links. Use **Moderation** to kick or ban players and manage server access.
 - **LAN admin access.** Open `http://LINUX_LAN_IP:5000` from your browser. The game's remote-command port stays inside the stack.
 - **Live server logs.** Check Steam updates, game startup, and mission-loading messages under **Server logs**.
 - **Configurable storage.** Game files, settings, and custom missions live in `./server` by default. Set `SERVER_DATA_DIR` in `.env` to choose another host folder.

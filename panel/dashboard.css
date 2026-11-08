@@ -77,6 +77,11 @@ footer { padding-block: 1.2rem 2rem; }
 .settings-layout .card > .meta { margin-top: .75rem; }
 .settings-feedback:not(:empty) { margin: 0 0 1rem; padding: .75rem 1rem; border-left: 3px solid var(--accent); background: var(--panel); }
 .settings-feedback:empty { margin: 0; }
+.mission-import { margin-top: 1rem; }
+.mission-import form { max-width: 40rem; }
+.mission-import .field { display: grid; gap: .35rem; margin-bottom: .85rem; }
+.mission-import .import-checkbox { display: flex; gap: .5rem; align-items: center; }
+.import-checkbox input { width: auto; accent-color: var(--accent); }
 .mission-fields { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
 .rotation-list { padding-left: 1.25rem; margin: 0; }
 .rotation-list li { border-top: 1px solid var(--line); padding: .75rem 0; }

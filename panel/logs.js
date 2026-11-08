@@ -20,9 +20,13 @@ async function refreshLogs() {
             output.textContent = log.text;
             if (follow) jumpToLatest();
         }
-        status.textContent = log.available
-            ? 'Showing up to 64 KiB of recent output.'
-            : 'Waiting for the game container to write its first log.';
+        if (log.text) {
+            status.textContent = `Showing up to 64 KiB · Checked at ${new Date().toLocaleTimeString()}`;
+        } else {
+            status.textContent = log.available
+                ? 'The log file is empty. Waiting for server output.'
+                : 'No game log yet. Check that the game container is running the current setup.';
+        }
     } catch {
         status.textContent = 'Could not read the latest server output.';
     } finally {
@@ -38,6 +42,7 @@ refreshButton.addEventListener('click', refreshLogs);
 pauseButton.addEventListener('click', () => {
     paused = !paused;
     pauseButton.setAttribute('aria-pressed', String(paused));
+    pauseButton.textContent = paused ? 'Resume updates' : 'Pause updates';
     refreshIfActive();
 });
 document.getElementById('log-latest').addEventListener('click', jumpToLatest);

@@ -28,11 +28,11 @@ services:
           create_host_path: false
       - type: bind
         source: ./server-entrypoint.sh
-        target: /usr/local/bin/nuclear-option-start
+        target: /usr/local/bin/nuclear-option-start.sh
         read_only: true
         bind:
           create_host_path: false
-    entrypoint: ["/bin/bash", "/usr/local/bin/nuclear-option-start"]
+    entrypoint: ["/bin/bash", "/usr/local/bin/nuclear-option-start.sh"]
 
   panel:
     build:

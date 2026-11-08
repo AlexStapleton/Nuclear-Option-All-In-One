@@ -13,7 +13,7 @@
             <div>
                 <p class="eyebrow">Server administration</p>
                 <h1>Settings &amp; missions</h1>
-                <p class="meta">Rename your server, plan the rotation, or queue a mission for the next round.</p>
+                <p class="meta">Set server access, plan the rotation, or queue a mission for the next round.</p>
             </div>
         </header>
         <p role="status" id="status" class="settings-feedback"></p>
@@ -21,6 +21,17 @@
             <section class="card" aria-labelledby="configuration-title">
                 <h2 id="configuration-title">Saved configuration</h2>
                 <label class="field">Server name <input id="server-name" required></label>
+                <label class="field">Game join password
+                    <select id="password-mode">
+                        <option value="keep">Keep current setting</option>
+                        <option value="set">Set a password</option>
+                        <option value="clear">Remove password</option>
+                    </select>
+                    <span class="meta" id="password-state"></span>
+                </label>
+                <div id="new-password-field" hidden>
+                    <label class="field">New join password <input id="new-password" type="password" autocomplete="new-password"></label>
+                </div>
                 <label class="field">Rotation order
                     <select id="rotation-type">
                         <option value="0">In order</option>
@@ -40,9 +51,9 @@
                         <optgroup label="Built-in multiplayer presets">
                             {% for name in stock %}<option data-group="BuiltIn" value="{{ name }}">{{ name }}</option>{% endfor %}
                         </optgroup>
-                        {% if custom %}<optgroup label="Local custom scenarios">
+                        <optgroup id="local-missions" label="Local custom scenarios"{% if not custom %} hidden{% endif %}>
                             {% for name in custom %}<option data-group="User" value="{{ name }}">{{ name }}</option>{% endfor %}
-                        </optgroup>{% endif %}
+                        </optgroup>
                     </select>
                 </label>
                 <div class="mission-fields">
@@ -57,9 +68,33 @@
                     <button type="button" id="next">Queue as next mission</button>
                 </div>
                 <p class="meta">For a new Workshop item, add it to the rotation and save so the game can download it before you queue it.</p>
-                <p class="meta">For a local scenario, copy its mission folder to the server's mission directory and refresh this page.</p>
+                <p class="meta"><a href="#import-heading">Import and edit a local mission</a>.</p>
             </section>
         </div>
+        <section class="card mission-import" aria-labelledby="import-heading">
+            <h2 id="import-heading">Import a custom mission</h2>
+            <p class="meta">Choose a mission JSON or a ZIP of one mission folder saved in the game. For multiplayer, use a mission saved with multiplayer enabled.</p>
+            <form id="mission-import" data-url="{{ url_for('import_mission') }}">
+                <label class="field">Mission file <input id="mission-upload" name="mission" type="file" accept=".json,.zip" required></label>
+                <button type="submit">Open mission</button>
+            </form>
+            <form id="mission-copy" hidden>
+                <label class="field">New mission name <input id="copy-name" required></label>
+                {% for key, (_, label, kind) in mission_fields.items() %}
+                <label class="field import-field{% if kind == 'checkbox' %} import-checkbox{% endif %}" hidden>
+                    {{ label }}
+                    {% if kind == 'textarea' %}
+                    <textarea data-mission-field="{{ key }}" rows="4"></textarea>
+                    {% else %}
+                    <input data-mission-field="{{ key }}" type="{{ kind }}"{% if kind == 'number' %} step="any"{% endif %}>
+                    {% endif %}
+                </label>
+                {% endfor %}
+                <button type="submit" class="primary">Save as copy</button>
+            </form>
+            <p id="import-status" class="meta command-status" role="status"></p>
+            <a href="#picker-title" id="use-saved-mission" hidden>Queue this mission or add it to the rotation</a>
+        </section>
     </main>
     <script>
         const initial = {{ initial | tojson }};
@@ -68,6 +103,16 @@
         let revision = initial.revision;
         byId('server-name').value = initial.name;
         byId('rotation-type').value = initial.rotation_type;
+
+        function showPasswordState(isSet) {
+            byId('password-state').textContent = isSet
+                ? 'A password is set for joining the game.'
+                : 'Players can join without a game password.';
+        }
+
+        function updatePasswordField() {
+            byId('new-password-field').hidden = byId('password-mode').value !== 'set';
+        }
 
         function action(label, handler, disabled = false) {
             const button = document.createElement('button');
@@ -125,6 +170,7 @@
                 const result = await response.json();
                 byId('status').textContent = result.message;
                 if (response.ok && result.revision) revision = result.revision;
+                if (response.ok) return result;
             } catch {
                 byId('status').textContent = 'The panel did not return a response. Refresh and check the saved settings.';
             } finally {
@@ -147,12 +193,32 @@
             showRotation();
             byId('status').textContent = 'Mission added. Save and reload to apply the rotation.';
         });
-        byId('save').addEventListener('click', (event) => send(event.currentTarget, '/settings', {
-            name: byId('server-name').value, rotation_type: Number(byId('rotation-type').value),
-            missions: rotation, revision,
-        }));
+        byId('password-mode').addEventListener('change', updatePasswordField);
+        byId('save').addEventListener('click', async (event) => {
+            const mode = byId('password-mode');
+            const password = byId('new-password');
+            mode.disabled = password.disabled = true;
+            try {
+                const result = await send(event.currentTarget, '/settings', {
+                    name: byId('server-name').value, rotation_type: Number(byId('rotation-type').value),
+                    missions: rotation, revision, password_mode: mode.value,
+                    ...(mode.value === 'set' && {password: password.value}),
+                });
+                if (result) {
+                    password.value = '';
+                    mode.value = 'keep';
+                    showPasswordState(result.password_set);
+                    updatePasswordField();
+                }
+            } finally {
+                mode.disabled = password.disabled = false;
+            }
+        });
         byId('next').addEventListener('click', (event) => send(event.currentTarget, '/settings/next', selectedMission()));
         showRotation();
+        showPasswordState(initial.password_set);
+        updatePasswordField();
     </script>
+    <script defer src="{{ url_for('static', filename='mission-import.js') }}"></script>
 </body>
 </html>

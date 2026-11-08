@@ -12,8 +12,10 @@ from threading import Lock
 from urllib.parse import parse_qs, urlparse
 
 from flask import abort, jsonify, render_template, request
+from werkzeug.exceptions import RequestEntityTooLarge
 
 import config
+import mission_import
 import server_commands
 from app import app, create_remote_commander, requires_auth
 
@@ -44,6 +46,7 @@ def dashboard_page():
 
 
 app.view_functions["index"] = dashboard_page
+app.config["MAX_CONTENT_LENGTH"] = mission_import.UPLOAD_LIMIT + 64 * 1024
 
 
 @app.get("/commands")
@@ -88,9 +91,13 @@ def log_tail():
     return response
 
 
+def mission_directory(settings):
+    return (DATA_DIR / settings.get("MissionDirectory", "missions")).resolve()
+
+
 def local_missions(settings):
-    directory = (DATA_DIR / settings.get("MissionDirectory", "missions")).resolve()
-    if not directory.is_relative_to(DATA_DIR) or not directory.is_dir():
+    directory = mission_directory(settings)
+    if not directory.is_relative_to(DATA_DIR.resolve()) or not directory.is_dir():
         return []
     names = []
     for folder in directory.iterdir():
@@ -145,8 +152,10 @@ def settings_page():
     except (OSError, ValueError, TypeError):
         abort(503, "Check that the server data folder and its JSON config are readable.")
     return render_template("settings.html", stock=STOCK_MISSIONS, custom=custom,
+                           mission_fields=mission_import.FIELDS,
                            groups=MISSION_GROUPS, initial={
                                "name": settings.get("ServerName", ""),
+                               "password_set": bool(settings.get("Password")),
                                "rotation_type": settings.get("RotationType", 0),
                                "missions": settings.get("MissionRotation", []),
                                "revision": revision,
@@ -163,12 +172,19 @@ def save_settings():
         name = data.get("name")
         rotation_type = data.get("rotation_type")
         missions = data.get("missions")
+        password_mode = data.get("password_mode", "keep")
+        password = data.get("password")
         if not isinstance(name, str) or not name.strip():
             raise ValueError("Enter a server name.")
         if type(rotation_type) is not int or rotation_type not in (0, 1, 2):
             raise ValueError("Choose a rotation order.")
         if not isinstance(missions, list) or not missions:
             raise ValueError("Add at least one mission to the rotation.")
+        if password_mode not in ("keep", "set", "clear"):
+            raise ValueError("Choose how to handle the join password.")
+        if password_mode == "set" and (not isinstance(password, str) or not password.strip()
+                                       or any(char in password for char in "\r\n\0")):
+            raise ValueError("Enter a join password on a single line.")
         rotation = [parse_mission(mission) for mission in missions]
     except ValueError as error:
         return jsonify(message=str(error)), 400
@@ -179,15 +195,49 @@ def save_settings():
             if revision != data.get("revision"):
                 return jsonify(message="The config changed. Refresh this page before saving."), 409
             settings.update(ServerName=name.strip(), RotationType=rotation_type, MissionRotation=rotation)
+            if password_mode != "keep":
+                settings["Password"] = password if password_mode == "set" else ""
             revision = write_config(settings)
         except (OSError, ValueError):
             return jsonify(message="Could not write the server config. Check data folder permissions."), 503
 
-    status, _ = server_commands.reload_config(create_remote_commander())
-    message = "Saved and reloaded. If the server list shows the old name, restart the server."
+    status, _ = server_commands.reload_config(create_remote_commander(), str(CONFIG_PATH))
+    message = "Saved and reloaded. If the game browser still shows the previous server settings, restart the server."
     if status != "Success":
         message = f"Saved. Reload returned {status}. Restart the server to apply the changes."
-    return jsonify(message=message, revision=revision)
+    return jsonify(message=message, revision=revision, password_set=bool(settings.get("Password")))
+
+
+@app.post("/settings/import")
+@requires_auth
+def import_mission():
+    # The upload uses multipart data, which cross-origin forms can otherwise submit.
+    if request.headers.get("X-Mission-Upload") != "1":
+        abort(403)
+    try:
+        upload = request.files.get("mission")
+        if not upload:
+            raise ValueError("Choose a mission JSON or ZIP up to 16 MiB.")
+        with mission_import.read_upload(upload) as (source, mission, archive, members):
+            if "name" not in request.form:
+                return jsonify(name=source, fields=mission_import.editable_values(mission))
+            name = request.form["name"]
+            edits = json.loads(request.form.get("edits", "{}"))
+            with CONFIG_LOCK:
+                settings, _ = read_config()
+                directory = mission_directory(settings)
+                if directory == DATA_DIR.resolve() or not directory.is_relative_to(DATA_DIR.resolve()):
+                    return jsonify(message="Set MissionDirectory to a subfolder under /server before importing."), 409
+                mission_import.save_copy(directory, name, mission, edits, archive, members)
+    except RequestEntityTooLarge:
+        return jsonify(message="Choose a mission JSON or ZIP up to 16 MiB."), 413
+    except FileExistsError as error:
+        return jsonify(message=str(error)), 409
+    except (ValueError, RecursionError) as error:
+        return jsonify(message=str(error)), 400
+    except (OSError, TypeError):
+        return jsonify(message="Could not save the mission. Check the mission folder permissions."), 503
+    return jsonify(name=name, message=f"Saved {name} as a local mission."), 201
 
 
 @app.post("/settings/next")

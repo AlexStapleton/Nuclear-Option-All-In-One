@@ -32,7 +32,7 @@ docker compose logs -f nuclear-option
 
 The first run builds the panel and downloads the dedicated server through SteamCMD using an anonymous login. When the game log says it is waiting for players, open **Multiplayer** on your Windows PC and look for **Nuclear Option Home Server**. Press Ctrl+C to leave the log view.
 
-The launcher creates `DedicatedServerConfig.json` in your data folder. Use the panel to change the server name and mission rotation. For a private game, set the in-game `Password` in the JSON and run `docker compose restart`. You can also edit `server-config.example.json` before the first start. [Shockfront's configuration and mission guide](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/blob/main/DedicatedServerGuide.md)
+The launcher creates `DedicatedServerConfig.json` in your data folder. Use **Settings & missions** to change the server name, join password, or mission rotation. You can also edit `server-config.example.json` before the first start. [Shockfront's configuration and mission guide](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/blob/main/DedicatedServerGuide.md)
 
 ## 3. Open the admin panel from your LAN
 
@@ -44,10 +44,10 @@ If the Linux host already uses port 5000, set `PANEL_PORT` in `.env`, run `sh st
 
 ### Rename the server and pick missions
 
-Click **Settings & missions** in the dashboard navigation. Change the server name or use the mission picker to add entries to the rotation. You can reorder the entries, set each time limit in seconds, and choose the rotation order. Click **Save and reload** to write the config and ask the game to reload it. If the in-game server browser still shows the previous name, run `docker compose restart`. **Queue as next mission** sets a one-time override after the current mission ends. [Shockfront's command reference](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/tree/main/ServerCommands)
+Click **Settings & missions** in the dashboard navigation. Under **Game join password**, choose **Set a password** or **Remove password**, then click **Save and reload**. If the game browser still shows the previous settings, run `docker compose restart`. Use the mission picker to add entries to the rotation, reorder them, or change time limits. **Queue as next mission** sets a one-time override after the current mission ends. [Shockfront's command reference](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/tree/main/ServerCommands)
 
 - **Built-in missions.** Use the presets or enter an exact mission name with the appropriate group if it is missing from the picker.
-- **Local custom scenarios.** Copy the entire mission folder into the data folder's `missions/` subdirectory and refresh the page. For a folder named `My Scenario`, the picker looks for `missions/My Scenario/My Scenario.json`. If you set a custom `MissionDirectory`, point it somewhere under `/server` so both containers can see it.
+- **Local custom scenarios.** In the Windows mission editor, save a multiplayer mission. In the panel, use **Import a custom mission** to open the saved JSON or a ZIP of one mission folder. A ZIP keeps any companion files. Edit the fields the panel recognizes, such as the briefing, respawn rule, or weather, and choose **Save as copy**. The new mission is selected in the picker. Use **Queue as next mission** for a one-time run or **Add to rotation** followed by **Save and reload**. Uploads support up to 16 MiB, with ZIP contents up to 64 MiB unpacked. If you set a custom `MissionDirectory`, use a subfolder under `/server` so both containers can see it.
 - **Steam Workshop.** Select `Workshop`, paste the Steam Community item link or its numeric ID, and add it to the rotation. Save first so the dedicated server can download the item. [Shockfront's mission format](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/blob/main/DedicatedServerGuide.md#loading-missions)
 
 If you are upgrading an existing installation, run `git pull` and `sh start.sh` to rebuild the panel. If the settings page reports a permissions error, check that the account owning the data folder can read the JSON file and write to the folder.
