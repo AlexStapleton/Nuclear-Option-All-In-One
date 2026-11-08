@@ -2,6 +2,8 @@
 /.panel.env
 .panel-password
 .panel-kicks.json
+.panel-launch-settings
+.panel-startup-profiles.json
 /server/
 __pycache__/
 *.py[cod]

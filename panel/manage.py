@@ -16,6 +16,7 @@ from flask import abort, jsonify, render_template, request
 from werkzeug.exceptions import RequestEntityTooLarge
 
 import config
+import launch_settings
 import mission_import
 import mod_inventory
 import panel_auth
@@ -175,7 +176,7 @@ def log_tail():
     source = request.args.get("source", "game")
     if source == "game":
         log_dir = DATA_DIR / ".panel-logs"
-        paths = [log_dir / name for name in ("server.log", "server.log.1")]
+        paths = [log_dir / "server.log", *(log_dir / f"server.log.{index}" for index in range(1, 10))]
     elif source == "mods":
         paths = []
         try:
@@ -303,6 +304,86 @@ def write_config(settings):
         finally:
             temporary.unlink(missing_ok=True)
     return hashlib.sha256(raw).hexdigest()
+
+
+@app.get("/settings/launch")
+def launch_status():
+    try:
+        saved = launch_settings.preferences(DATA_DIR)
+        active, sample = launch_settings.launcher_status(DATA_DIR)
+        if request.args.get("sample") == "1":
+            return jsonify(saved=saved, active=active, sample=sample)
+        settings, _ = read_config()
+        profiles = launch_settings.load_profiles(DATA_DIR)
+        plugin = launch_settings.performance_options(DATA_DIR)
+        entries = [{"name": name, "server_name": snapshot.get("ServerName", ""),
+                    "matches": profile_config(snapshot, settings) == settings}
+                   for name, snapshot in sorted(profiles.items(), key=lambda item: item[0].casefold())]
+        return jsonify(saved=saved, active=active, sample=sample, plugin=plugin, profiles=entries)
+    except (OSError, ValueError, RuntimeError):
+        return jsonify(message="Could not read launch settings. Check the panel files in the server data directory."), 503
+
+
+def profile_config(snapshot, current):
+    # The Docker UDP mapping belongs to this instance across all profiles.
+    config = dict(snapshot)
+    for key in server_options.DEFAULT_PORTS:
+        if key in current:
+            config[key] = current[key]
+        else:
+            config.pop(key, None)
+    return config
+
+
+@app.post("/settings/launch")
+def save_launch():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(message="Choose a launch setting."), 400
+    action = data.get("action")
+    try:
+        if action == "preferences":
+            launch_settings.save_preferences(DATA_DIR, data)
+            message = "Launch settings saved. Restart the game container to apply them."
+        elif action == "performance":
+            with MOD_LOCK:
+                if mod_job["running"]:
+                    return jsonify(message="Wait for the mod installation to finish."), 409
+                launch_settings.save_performance(DATA_DIR, data.get("workers"), data.get("timing"))
+            message = "NukeStats settings saved. Restart the game container to apply them."
+        elif action in ("save-profile", "apply-profile", "delete-profile"):
+            name = data.get("name")
+            if not isinstance(name, str) or not launch_settings.PROFILE_NAME.fullmatch(name.strip()):
+                raise ValueError("Enter a profile name from 1 to 60 characters.")
+            name = name.strip()
+            with CONFIG_LOCK:
+                profiles = launch_settings.load_profiles(DATA_DIR)
+                if action == "save-profile":
+                    if any(name.casefold() == key.casefold() for key in profiles):
+                        return jsonify(message="A startup profile already has that name."), 409
+                    if len(profiles) >= 32:
+                        raise ValueError("Delete a startup profile before saving a new one (maximum 32).")
+                    profiles[name], _ = read_config()
+                    launch_settings.save_profiles(DATA_DIR, profiles)
+                    message = f"Saved startup profile {name}."
+                elif name not in profiles:
+                    return jsonify(message="That startup profile no longer exists."), 404
+                elif action == "delete-profile":
+                    del profiles[name]
+                    launch_settings.save_profiles(DATA_DIR, profiles)
+                    message = f"Deleted startup profile {name}."
+                else:
+                    current, _ = read_config()
+                    write_config(profile_config(profiles[name], current))
+                    message = f"Restored {name} to the saved config. Restart the game container to apply it."
+            return jsonify(message=message, reload=action == "apply-profile")
+        else:
+            raise ValueError("Choose a launch setting.")
+    except ValueError as error:
+        return jsonify(message=str(error)), 400
+    except (OSError, RuntimeError):
+        return jsonify(message="Could not write launch settings. Check data folder permissions."), 503
+    return jsonify(message=message)
 
 
 @app.get("/settings")

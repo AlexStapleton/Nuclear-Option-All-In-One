@@ -1,0 +1,68 @@
+<section class="card server-configuration" id="launch-settings" aria-labelledby="launch-heading"
+         data-url="{{ url_for('launch_status') }}">
+    <h2 id="launch-heading">Launch settings</h2>
+    <p class="meta">These settings take effect when the game container restarts.</p>
+    <div class="settings-layout launch-layout">
+        <div>
+            <h3>Performance &amp; logs</h3>
+            <p class="meta" id="launch-active" role="status">Checking the last game launch…</p>
+            <form id="launcher-preferences">
+                <label class="field">Server FPS cap
+                    <select id="launch-fps-preset">
+                        <option value="60">60 FPS</option>
+                        <option value="30">30 FPS</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                </label>
+                <label class="field" id="launch-fps-field" hidden>Custom FPS cap
+                    <input type="number" id="launch-fps" min="10" max="240" step="1" value="60" required>
+                </label>
+                <label class="field">Size per game log (MiB)
+                    <input type="number" id="launch-log-size" min="1" max="32" step="1" value="1" required>
+                </label>
+                <label class="field">Game logs to retain
+                    <input type="number" id="launch-log-files" min="1" max="10" step="1" value="2" required>
+                </label>
+                <p class="meta">Includes the current game log and its archives. Docker and BepInEx logs have separate retention.</p>
+                <button class="primary" type="submit" disabled>Save launch settings</button>
+                <p class="meta command-status" id="launch-preferences-status" role="status"></p>
+            </form>
+            <details class="mission-source">
+                <summary>Physics workers &amp; measured performance</summary>
+                <p class="meta" id="launch-plugin-status"></p>
+                <p class="meta" id="launch-sample"></p>
+                <p class="meta"><a href="https://github.com/Tomosnuclearbombos/nuclear-option-toolkit/releases/tag/v2.1.0" target="_blank" rel="noopener">NukeStats release</a></p>
+                <form id="launch-performance" hidden>
+                    <label class="field">Physics worker threads (0 for automatic)
+                        <input type="number" id="launch-workers" min="0" max="64" step="1" value="0" required>
+                    </label>
+                    <label class="option-check"><input type="checkbox" id="launch-timing"> Collect frame timing samples</label>
+                    <button type="submit">Save NukeStats settings</button>
+                </form>
+                <p class="meta command-status" id="launch-performance-status" role="status"></p>
+            </details>
+        </div>
+        <div>
+            <h3>Startup profiles</h3>
+            <p class="meta">Save the current game configuration, including its rotation and join password. Restoring a profile keeps this container’s ports and selected mod set.</p>
+            <form id="launch-profile-form">
+                <label class="field">New profile name
+                    <input id="launch-profile-name" maxlength="60" required>
+                </label>
+                <button type="submit" disabled>Save current configuration</button>
+            </form>
+            <p class="meta command-status" id="launch-profile-status" role="status"></p>
+            <ul id="launch-profiles" class="workshop-library" aria-label="Startup profiles" hidden></ul>
+        </div>
+    </div>
+    <dialog id="launch-profile-dialog" class="card action-dialog" aria-labelledby="launch-profile-dialog-title">
+        <form method="dialog">
+            <h3 id="launch-profile-dialog-title"></h3>
+            <p id="launch-profile-dialog-message" class="meta"></p>
+            <div class="actions">
+                <button value="cancel" autofocus>Cancel</button>
+                <button value="confirm" id="launch-profile-confirm" class="danger">Confirm</button>
+            </div>
+        </form>
+    </dialog>
+</section>

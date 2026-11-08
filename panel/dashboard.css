@@ -96,6 +96,8 @@ footer { padding-block: 1.2rem 2rem; }
 .mission-source[open] > summary { margin-bottom: .7rem; }
 .mission-source .import-checkbox { display: flex; align-items: center; gap: .5rem; }
 .server-configuration { margin-top: 1.5rem; }
+.launch-layout { margin-top: 1.15rem; gap: 1.5rem 2rem; }
+.launch-layout .option-check { margin-bottom: .75rem; }
 .server-configuration .option-check { display: flex; align-items: center; gap: .5rem; margin: .75rem 0; }
 #rotation-type { max-width: 21rem; }
 #mission-rotation > .field { margin-top: .9rem; }

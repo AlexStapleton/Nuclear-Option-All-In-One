@@ -16,7 +16,7 @@
                 <h1>Settings &amp; missions</h1>
                 <p class="meta">Manage the mission rotation and server settings.</p>
             </div>
-            <div class="actions settings-jump"><a href="#picker-title">Add missions</a><a href="#available-title">Available missions</a><a href="#server-settings">Server settings</a></div>
+            <div class="actions settings-jump"><a href="#picker-title">Add missions</a><a href="#available-title">Available missions</a><a href="#server-settings">Server settings</a><a href="#launch-settings">Launch settings</a></div>
         </header>
         <div class="settings-layout mission-workspace">
             <section class="card mission" id="mission-rotation" aria-labelledby="rotation-title"
@@ -170,6 +170,7 @@
                 </div>
             </details>
         </section>
+        {% include 'launch-settings.html' %}
         <dialog class="card action-dialog" id="switch-mission-dialog" aria-labelledby="switch-mission-title" aria-describedby="switch-mission-help">
             <form method="dialog" id="switch-mission-form">
                 <h2 id="switch-mission-title">Switch mission now?</h2>
@@ -373,5 +374,6 @@
     </script>
     <script defer src="{{ url_for('static', filename='server-settings.js') }}"></script>
     <script defer src="{{ url_for('static', filename='mission-import.js') }}"></script>
+    <script defer src="{{ url_for('static', filename='launch-settings.js') }}"></script>
 </body>
 </html>

@@ -1,6 +1,37 @@
 #!/bin/bash
 set -eu
 
+fps=60
+log_mib=1
+log_files=2
+if [[ -f .panel-launch-settings && ! -L .panel-launch-settings ]] &&
+    IFS= read -r -n 64 settings < .panel-launch-settings &&
+    [[ $settings =~ ^([1-9][0-9]{0,2})\ ([1-9][0-9]?)\ ([1-9][0-9]?)$ ]]; then
+    if (( BASH_REMATCH[1] >= 10 && BASH_REMATCH[1] <= 240 &&
+          BASH_REMATCH[2] <= 32 && BASH_REMATCH[3] <= 10 )); then
+        fps=${BASH_REMATCH[1]}
+        log_mib=${BASH_REMATCH[2]}
+        log_files=${BASH_REMATCH[3]}
+    fi
+fi
+log_limit=$((log_mib * 1048576))
+
+prepare_logs() {
+    umask 022
+    mkdir -p .panel-logs && touch .panel-logs/server.log && chmod 0644 .panel-logs/server.log || return 1
+    cd .panel-logs || return 1
+    local name index
+    for ((index=0; index<10; index++)); do
+        name=server.log
+        if ((index)); then name=server.log.$index; fi
+        if ((index >= log_files)); then
+            rm -f -- "$name" || return 1
+        elif [[ -f $name ]] && (( $(wc -c < "$name") > log_limit )); then
+            tail -c "$log_limit" -- "$name" > .trimmed-log && mv -f -- .trimmed-log "$name" || return 1
+        fi
+    done
+}
+
 copy_logs() {
     # Keep Docker stdout as well as a bounded copy for the panel. The -p option
     # keeps tee writing to Docker if the log-copy process loses its output.
@@ -8,19 +39,37 @@ copy_logs() {
         cd .panel-logs
         umask 022
         # mawk normally buffers pipe input before processing the first line.
-        LC_ALL=C mawk -W interactive -v size="$(wc -c < server.log)" '
+        LC_ALL=C mawk -W interactive -v size="$(wc -c < server.log)" -v limit="$log_limit" -v files="$log_files" '
+            function rotate(    i, source, dest) {
+                close("server.log")
+                if (files == 1)
+                    return system(": > server.log")
+                for (i=files-1; i>=1; i--) {
+                    source = i == 1 ? "server.log" : "server.log." (i-1)
+                    dest = "server.log." i
+                    if (system("if [ -f " source " ]; then mv -f -- " source " " dest "; fi") != 0)
+                        return 1
+                }
+                return 0
+            }
             {
                 line = substr($0, 1, 16384)
                 bytes = length(line) + 1
-                if (size + bytes > 1048576) {
-                    close("server.log")
-                    if (system("mv -f -- server.log server.log.1") != 0)
-                        exit 1
+                if (size + bytes > limit) {
+                    if (rotate() != 0) exit 1
                     size = 0
                 }
                 print line >> "server.log"
                 fflush("server.log")
                 size += bytes
+                prefix = "[Nuclear Option] Launch instance "
+                if (index(line, prefix) == 1) instance = substr(line, length(prefix) + 1)
+                sample = index(line, "[NOSTATS] {\"t\":\"perf\",")
+                if (instance != "" && sample == 1) {
+                    print instance, systime(), substr(line, sample + length("[NOSTATS] ")) > ".performance-sample.tmp"
+                    close(".performance-sample.tmp")
+                    system("mv -f -- .performance-sample.tmp performance-sample")
+                }
             }
         '
     )
@@ -28,7 +77,7 @@ copy_logs() {
 }
 
 log_pid=
-if (umask 022; mkdir -p .panel-logs && touch .panel-logs/server.log && chmod 0644 .panel-logs/server.log); then
+if (prepare_logs); then
     exec > >(copy_logs) 2>&1
     log_pid=$!
 else
@@ -72,13 +121,19 @@ stop_game() {
 set -m
 game_pid=
 trap 'if [[ -n $game_pid ]]; then stop_game; fi; exit 0' INT TERM
-args=(-logFile - -limitframerate 60 -DedicatedServer /server/DedicatedServerConfig.json -ServerRemoteCommands 7779)
+args=(-logFile - -limitframerate "$fps" -DedicatedServer /server/DedicatedServerConfig.json -ServerRemoteCommands 7779)
 while :; do
     selected=$(selected_mod_set)
     profile=/server/.panel-mods/$selected
-    if ! (umask 022; cat /proc/sys/kernel/random/uuid > .panel-logs/.game-instance.tmp &&
-          mv -f -- .panel-logs/.game-instance.tmp .panel-logs/game-instance); then
-        printf '%s\n' '[Nuclear Option] Could not initialize panel kick tracking.' >&2
+    if instance=$(cat /proc/sys/kernel/random/uuid) &&
+        (umask 022
+         printf '%s\n' "$instance" > .panel-logs/.game-instance.tmp &&
+         mv -f -- .panel-logs/.game-instance.tmp .panel-logs/game-instance &&
+         printf '%s %s %s %s\n' "$instance" "$fps" "$log_mib" "$log_files" > .panel-logs/.launch-active.tmp &&
+         mv -f -- .panel-logs/.launch-active.tmp .panel-logs/launch-active); then
+        printf '[Nuclear Option] Launch instance %s\n' "$instance"
+    else
+        printf '%s\n' '[Nuclear Option] Could not publish launch status.' >&2
     fi
     if [[ -n $selected && ! -L .panel-mods && ! -L $profile && -f $profile/libdoorstop.so &&
           -f $profile/BepInEx/core/BepInEx.Preloader.dll ]]; then
