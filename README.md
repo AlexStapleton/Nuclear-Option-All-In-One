@@ -1,9 +1,11 @@
 # Nuclear Option All-in-One
 
-Run the official Nuclear Option dedicated server on an x86-64 Linux host and manage it from a browser on your Windows PC. Docker Compose runs the game server and Shockfront's web control panel together.
+Run the official Nuclear Option dedicated server on an x86-64 Linux host and manage it from a browser on your LAN. Docker Compose runs the game server and this project's web panel, which uses Shockfront's command backend.
 
 - **One-command start.** The launcher creates the initial server configuration, generates a panel password, and starts both containers. SteamCMD checks for game updates when the server container starts.
-- **Browser administration.** Change dedicated server settings, import local missions, and check Steam Workshop downloads before queueing them. Use **Moderation** to kick or ban players and manage server access.
+- **Server settings.** Set a game join password, player limit, visibility, mission timing, vote-kick rules, ban lists, and game or query port overrides.
+- **Mission rotation.** Choose built-in missions, import and edit a local JSON or ZIP, or add a Steam Workshop item. Check when the Workshop file arrives before queueing it.
+- **Moderation.** Choose a connected player or enter a Steam ID to kick, ban, or restore access.
 - **LAN admin access.** Open `http://LINUX_LAN_IP:5000` from your browser. The game's remote-command port stays inside the stack.
 - **Live server logs.** Check Steam updates, game startup, and mission-loading messages under **Server logs**.
 - **Configurable storage.** Game files, settings, and custom missions live in `./server` by default. Set `SERVER_DATA_DIR` in `.env` to choose another host folder.
@@ -19,6 +21,22 @@ sh start.sh
 ```
 
 Open the web panel from any device on your LAN and sign in as `admin` with the password in `.panel.env`. To change the panel address, port, or storage folder, copy `.env.example` to `.env`, edit it, and rerun `sh start.sh`. See the [setup guide](SETUP.md) for configuration and migration steps.
+
+## Screenshots
+
+**Overview** shows the current mission, the next mission, the player roster, and the announcement form.
+
+![Overview showing mission progress, player roster, and the announcement form](docs/screenshots/overview.jpg)
+
+**Settings & missions** shows the rotation, Workshop download status, server options, and local mission import.
+
+![Settings and missions showing the rotation, a Workshop item found in the cache, server options, and the import form](docs/screenshots/settings-and-missions.jpg)
+
+**Moderation** brings the connected player list, player actions, and maintenance tools together.
+
+![Moderation showing connected players and a player action form](docs/screenshots/moderation.jpg)
+
+The screenshots use demo server data.
 
 ## Ports and router setup
 
@@ -49,4 +67,6 @@ Run `git pull` and `sh start.sh` from the project folder, then refresh the web p
 
 ## Credits
 
-This is a community packaging project. The game server comes from Steam as app `3930080`. The control panel comes from Shockfront's Server Tools repository. [Official dedicated server guide](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/blob/main/DedicatedServerGuide.md) · [Shockfront's control panel](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/tree/main/ServerControlPanel)
+This is a community project. Steam supplies the official game server as app `3930080`. The HTML, CSS, and JavaScript for the panel are in this repository. The Docker build fetches a pinned copy of Shockfront's Server Control Panel for authentication, command endpoints, and the connection to the game. [Panel Dockerfile](panel/Dockerfile) · [Pinned Shockfront source](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/tree/1d3aba8af001abe2a380b3518753e0d1aef397a1/ServerControlPanel)
+
+This project's code is licensed under MIT. Shockfront's downloaded code and the game server are separate upstream components. [Project license](LICENSE)
