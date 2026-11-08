@@ -55,7 +55,7 @@ def dashboard_page():
 
 app.view_functions["index"] = dashboard_page
 app.config["MAX_CONTENT_LENGTH"] = mission_import.UPLOAD_LIMIT + 64 * 1024
-panel_auth.install_auth(app)
+panel_auth.install_auth(app, DATA_DIR)
 
 
 @app.get("/commands")

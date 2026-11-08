@@ -21,7 +21,7 @@ cd Nuclear-Option-All-In-One
 sh start.sh
 ```
 
-Open the web panel from any device on your LAN. On the sign-in page, enter `admin` and the password in `.panel.env`. To change the panel address, port, or storage folder, copy `.env.example` to `.env`, edit it, and rerun `sh start.sh`. See the [setup guide](SETUP.md) for configuration and migration steps.
+Open the web panel from any device on your LAN. For your first sign-in, enter `admin` and the generated password in `.panel.env`. Then use **Change password** in the panel to set your own. To change the panel address, port, or storage folder, copy `.env.example` to `.env`, edit it, and rerun `sh start.sh`. See the [setup guide](SETUP.md) for configuration and migration steps.
 
 ## Screenshots
 

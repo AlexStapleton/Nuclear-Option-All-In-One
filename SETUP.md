@@ -40,6 +40,8 @@ On Linux, run `cat .panel.env` from the project folder and copy the value after 
 
 In a browser on Windows or any other device on your LAN, open `http://LINUX_LAN_IP:5000`. For example, if the Linux box's LAN address is `192.168.1.50`, open `http://192.168.1.50:5000`. Enter `admin` and the generated password on the sign-in page. The session lasts up to 12 hours or until the panel restarts. Use **Sign out** in the navigation on a shared device. Once the game server is ready, the dashboard shows the current and next missions and the player roster.
 
+After signing in, open **Change password**. Enter your current password and confirm a new one of at least 12 characters. The change signs out all panel sessions. Sign back in as `admin` with the new password.
+
 If the Linux host already uses port 5000, set `PANEL_PORT` in `.env`, run `sh start.sh` again, and use the new port in the URL. The panel uses HTTP with password authentication. Use it on a trusted LAN and keep its TCP port off your router's forwarding list. [Docker port publishing](https://docs.docker.com/engine/network/port-publishing/)
 
 ### Rename the server and pick missions
@@ -80,7 +82,7 @@ Run these commands from the project folder on Linux.
 | Follow game logs | `docker compose logs -f nuclear-option` |
 | Follow panel logs | `docker compose logs -f panel` |
 
-Back up your configured data directory, `.env` if you use it, and `.panel.env`. To rotate the panel password, edit `.panel.env` and run `sh start.sh`.
+Back up your configured data directory, `.env` if you use it, and `.panel.env`. The password you set in the panel is stored as a hash in `.panel-password` inside your server data directory. To recover access from the Linux host, stop the `panel` service with `docker compose stop panel`, move `.panel-password` out of the configured data directory, and run `sh start.sh`. Sign in with the password in `.panel.env`, then use **Change password** to choose a new one.
 
 ## Move existing server data
 

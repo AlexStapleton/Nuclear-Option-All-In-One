@@ -41,5 +41,9 @@ EOF
 export NO_GAME_PORT NO_QUERY_PORT
 docker compose up -d --build
 panel_port=$(printf '%s\n' "$compose_env" | sed -n 's/^PANEL_PORT=//p')
-printf '\n%s\n' 'Panel login is admin. Read the generated password with: cat .panel.env'
+if [ -f "$data_dir/.panel-password" ]; then
+    printf '\n%s\n' 'Panel login is admin. Use the password you set in the web panel.'
+else
+    printf '\n%s\n' 'Panel login is admin. Read the generated password with: cat .panel.env'
+fi
 printf 'From your LAN, open http://LINUX_LAN_IP:%s in your browser.\n' "${panel_port:-5000}"
