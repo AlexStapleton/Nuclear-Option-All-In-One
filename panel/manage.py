@@ -14,10 +14,11 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 import config
 import mission_import
+import panel_auth
 import server_commands
 import server_options
 import workshop
-from app import app, create_remote_commander, requires_auth
+from app import app, create_remote_commander
 
 DATA_DIR = Path("/server")
 CONFIG_PATH = DATA_DIR / "DedicatedServerConfig.json"
@@ -36,7 +37,6 @@ def read_config():
     return settings, hashlib.sha256(raw).hexdigest()
 
 
-@requires_auth
 def dashboard_page():
     try:
         settings, _ = read_config()
@@ -48,22 +48,20 @@ def dashboard_page():
 
 app.view_functions["index"] = dashboard_page
 app.config["MAX_CONTENT_LENGTH"] = mission_import.UPLOAD_LIMIT + 64 * 1024
+panel_auth.install_auth(app)
 
 
 @app.get("/commands")
-@requires_auth
 def moderation_page():
     return render_template("moderation.html")
 
 
 @app.get("/logs")
-@requires_auth
 def logs_page():
     return render_template("logs.html")
 
 
 @app.get("/logs/tail")
-@requires_auth
 def log_tail():
     log_dir = DATA_DIR / ".panel-logs"
     chunks = []
@@ -152,7 +150,6 @@ def write_config(settings):
 
 
 @app.get("/settings")
-@requires_auth
 def settings_page():
     try:
         settings, revision = read_config()
@@ -174,7 +171,6 @@ def settings_page():
 
 
 @app.post("/settings")
-@requires_auth
 def save_settings():
     data = request.get_json()
     try:
@@ -243,7 +239,6 @@ def workshop_status(settings, identifier):
 
 
 @app.get("/settings/workshop")
-@requires_auth
 def check_workshop():
     try:
         identifier = workshop.item_id(request.args.get("item", "").strip())
@@ -261,7 +256,6 @@ def check_workshop():
 
 
 @app.post("/settings/import")
-@requires_auth
 def import_mission():
     # The upload uses multipart data, which cross-origin forms can otherwise submit.
     if request.headers.get("X-Mission-Upload") != "1":
@@ -293,7 +287,6 @@ def import_mission():
 
 
 @app.post("/settings/next")
-@requires_auth
 def queue_mission():
     try:
         mission = parse_mission(request.get_json())

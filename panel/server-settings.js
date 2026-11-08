@@ -59,7 +59,7 @@ async function refreshWorkshop(lookup = false) {
     try {
         const query = new URLSearchParams({item: value});
         if (lookup) query.set('details', '1');
-        const response = await fetch(`${workshopControls.dataset.url}?${query}`, {cache: 'no-store'});
+        const response = await panelFetch(`${workshopControls.dataset.url}?${query}`, {cache: 'no-store'});
         const item = await response.json();
         if (request !== workshopRequest) return;
         workshopStatusText.textContent = item.message;

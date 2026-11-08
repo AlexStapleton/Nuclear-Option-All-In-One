@@ -12,7 +12,7 @@ async function refreshLogs() {
     if (refreshButton.disabled) return;
     refreshButton.disabled = true;
     try {
-        const response = await fetch(output.dataset.url, {signal: AbortSignal.timeout(5000)});
+        const response = await panelFetch(output.dataset.url, {signal: AbortSignal.timeout(5000)});
         if (!response.ok) throw new Error('Log unavailable');
         const log = await response.json();
         const follow = output.scrollHeight - output.scrollTop - output.clientHeight < 8;

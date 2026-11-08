@@ -27,6 +27,15 @@ button:disabled { opacity: .55; cursor: wait; }
 nav { display: flex; flex-wrap: wrap; gap: .35rem; }
 nav a { padding: .4rem .65rem; border-radius: .35rem; color: var(--muted); text-decoration: none; }
 nav a:hover, nav a[aria-current] { color: var(--text); background: #243344; }
+.sign-out { margin: 0; }
+.sign-out button { padding: .4rem .65rem; }
+.session-notice { margin-top: 1rem; padding: .75rem 1rem; border-left: 3px solid var(--accent); background: var(--panel); }
+.sign-in { display: grid; place-items: center; min-height: 100vh; padding: 1rem; }
+.sign-in-card { width: min(100%, 27rem); padding: clamp(1.2rem, 5vw, 2rem); }
+.sign-in-card h1 { margin: 1rem 0 .4rem; font-size: 1.8rem; line-height: 1.15; }
+.sign-in-card input:not([type="hidden"]) { margin-bottom: 1rem; }
+.sign-in-card button { width: 100%; margin-top: 0; }
+.sign-in-error { color: #ffb7b7; margin-bottom: 0; }
 
 .hero { display: flex; justify-content: space-between; align-items: end; gap: 1rem 2rem; flex-wrap: wrap; padding: 2.75rem 0 1.65rem; }
 .hero > div:first-child { flex: 1 1 23rem; min-width: 0; }

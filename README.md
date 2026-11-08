@@ -20,7 +20,7 @@ cd Nuclear-Option-All-In-One
 sh start.sh
 ```
 
-Open the web panel from any device on your LAN and sign in as `admin` with the password in `.panel.env`. To change the panel address, port, or storage folder, copy `.env.example` to `.env`, edit it, and rerun `sh start.sh`. See the [setup guide](SETUP.md) for configuration and migration steps.
+Open the web panel from any device on your LAN. On the sign-in page, enter `admin` and the password in `.panel.env`. To change the panel address, port, or storage folder, copy `.env.example` to `.env`, edit it, and rerun `sh start.sh`. See the [setup guide](SETUP.md) for configuration and migration steps.
 
 ## Screenshots
 
@@ -67,6 +67,6 @@ Run `git pull` and `sh start.sh` from the project folder, then refresh the web p
 
 ## Credits
 
-This is a community project. Steam supplies the official game server as app `3930080`. The HTML, CSS, and JavaScript for the panel are in this repository. The Docker build fetches a pinned copy of Shockfront's Server Control Panel for authentication, command endpoints, and the connection to the game. [Panel Dockerfile](panel/Dockerfile) · [Pinned Shockfront source](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/tree/1d3aba8af001abe2a380b3518753e0d1aef397a1/ServerControlPanel)
+This is a community project. Steam supplies the official game server as app `3930080`. This repository contains the panel interface and sign-in code. The Docker build fetches a pinned copy of Shockfront's Server Control Panel for the game command endpoints and the connection to the game. [Panel Dockerfile](panel/Dockerfile) · [Pinned Shockfront source](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/tree/1d3aba8af001abe2a380b3518753e0d1aef397a1/ServerControlPanel)
 
 This project's code is licensed under MIT. Shockfront's downloaded code and the game server are separate upstream components. [Project license](LICENSE)

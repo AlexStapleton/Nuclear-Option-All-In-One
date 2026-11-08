@@ -26,7 +26,7 @@ async function uploadMission(button, form, onSuccess) {
     importStatus.dataset.state = '';
     importStatus.textContent = form === copyForm ? 'Saving the mission…' : 'Reading the mission…';
     try {
-        const response = await fetch(importForm.dataset.url, {
+        const response = await panelFetch(importForm.dataset.url, {
             method: 'POST', headers: {'X-Mission-Upload': '1'}, body: data,
         });
         const result = await response.json();

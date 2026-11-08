@@ -6,6 +6,13 @@
             <a href="{{ url_for('settings_page') }}"{% if request.endpoint == 'settings_page' %} aria-current="page"{% endif %}>Settings &amp; missions</a>
             <a href="{{ url_for('logs_page') }}"{% if request.endpoint == 'logs_page' %} aria-current="page"{% endif %}>Server logs</a>
             <a href="{{ url_for('moderation_page') }}"{% if request.endpoint == 'moderation_page' %} aria-current="page"{% endif %}>Moderation</a>
+            <form method="post" action="{{ url_for('logout') }}" class="sign-out">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit">Sign out</button>
+            </form>
         </nav>
     </div>
 </header>
+<div id="session-expired" class="shell session-notice" role="status" hidden>
+    Your panel session has expired. <a href="{{ url_for('login', next=request.path) }}">Sign in again</a>.
+</div>

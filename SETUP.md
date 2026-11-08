@@ -38,7 +38,7 @@ The launcher creates `DedicatedServerConfig.json` in your data folder. Use **Set
 
 On Linux, run `cat .panel.env` from the project folder and copy the value after `PANEL_PASSWORD=`. This password is separate from the in-game password.
 
-In a browser on Windows or any other device on your LAN, open `http://LINUX_LAN_IP:5000`. For example, if the Linux box's LAN address is `192.168.1.50`, open `http://192.168.1.50:5000`. Sign in as `admin` with the generated password. Once the game server is ready, the dashboard shows the current and next missions and the player roster.
+In a browser on Windows or any other device on your LAN, open `http://LINUX_LAN_IP:5000`. For example, if the Linux box's LAN address is `192.168.1.50`, open `http://192.168.1.50:5000`. Enter `admin` and the generated password on the sign-in page. The session lasts up to 12 hours or until the panel restarts. Use **Sign out** in the navigation on a shared device. Once the game server is ready, the dashboard shows the current and next missions and the player roster.
 
 If the Linux host already uses port 5000, set `PANEL_PORT` in `.env`, run `sh start.sh` again, and use the new port in the URL. The panel uses HTTP with password authentication. Use it on a trusted LAN and keep its TCP port off your router's forwarding list. [Docker port publishing](https://docs.docker.com/engine/network/port-publishing/)
 

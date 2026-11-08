@@ -4,7 +4,7 @@ const connectionState = byId('connection-state');
 let refreshing = false;
 
 async function command(name, data = {}) {
-    const response = await fetch(`/command/${name}`, {
+    const response = await panelFetch(`/command/${name}`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(data),
