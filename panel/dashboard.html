@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Server dashboard · Nuclear Option</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+    <script defer src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</head>
+<body>
+    <header class="topbar">
+        <div class="shell bar-content">
+            <a class="brand" href="{{ url_for('index') }}"><span class="mark" aria-hidden="true">N</span>Nuclear Option</a>
+            <nav aria-label="Server management">
+                <a href="{{ url_for('index') }}" aria-current="page">Overview</a>
+                <a href="{{ url_for('settings_page') }}">Settings &amp; missions</a>
+                <a href="{{ url_for('command_console') }}">Advanced commands</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="shell">
+        <section class="hero" aria-labelledby="server-name">
+            <div>
+                <p class="eyebrow">Dedicated server</p>
+                <h1 id="server-name">{{ server_name or 'Nuclear Option Server' }}</h1>
+            </div>
+            <div class="connection">
+                <span id="connection-state" class="badge" role="status" data-state="waiting">Connecting</span>
+                <button id="refresh" type="button">Refresh now</button>
+                <span id="last-check" class="meta">Checking game server…</span>
+            </div>
+        </section>
+
+        <div class="overview">
+            <section class="card mission" aria-labelledby="mission-label">
+                <h2 class="eyebrow" id="mission-label">Current mission</h2>
+                <p id="current-mission" class="metric">—</p>
+                <p id="mission-clock" class="meta">Waiting for mission data</p>
+                <progress id="mission-progress" max="100" value="0" aria-label="Elapsed mission time" hidden></progress>
+            </section>
+            <section class="card" aria-labelledby="next-label">
+                <h2 class="eyebrow" id="next-label">Up next</h2>
+                <p id="next-mission" class="metric">—</p>
+                <a href="{{ url_for('settings_page') }}">Manage rotation</a>
+            </section>
+            <section class="card" aria-labelledby="players-label">
+                <h2 class="eyebrow" id="players-label">Players online</h2>
+                <p class="metric tally"><span id="player-count">—</span>{% if max_players %}<span class="capacity"> / {{ max_players }}</span>{% endif %}</p>
+                <p class="meta">Connected to this server</p>
+            </section>
+        </div>
+
+        <div class="details">
+            <section class="card" aria-labelledby="roster-label">
+                <h2 id="roster-label">Player roster</h2>
+                <p id="roster-status" class="meta">Loading player list…</p>
+                <div class="table-wrap">
+                    <table id="roster" hidden>
+                        <thead><tr><th scope="col">Steam ID</th><th scope="col">Faction</th></tr></thead>
+                        <tbody id="player-rows"></tbody>
+                    </table>
+                </div>
+            </section>
+            <section class="card" aria-labelledby="broadcast-label">
+                <h2 id="broadcast-label">Server broadcast</h2>
+                <p class="meta">Send an announcement to in-game chat.</p>
+                <form id="broadcast">
+                    <label for="message">Message</label>
+                    <textarea id="message" rows="3" required></textarea>
+                    <button type="submit" class="primary">Send announcement</button>
+                    <p id="broadcast-status" class="meta" role="status"></p>
+                </form>
+            </section>
+        </div>
+        <footer class="meta">Status refreshes every 15 seconds while this tab is visible.</footer>
+    </main>
+</body>
+</html>

@@ -1,4 +1,4 @@
-"""Add settings and mission selection to Shockfront's command panel."""
+"""Add a dashboard and settings to Shockfront's command panel."""
 
 import hashlib
 import json
@@ -15,7 +15,7 @@ from flask import abort, jsonify, render_template, request
 
 import config
 import server_commands
-from app import app, create_remote_commander, requires_auth
+from app import app, create_remote_commander, index as command_console, requires_auth
 
 DATA_DIR = Path("/server")
 CONFIG_PATH = DATA_DIR / "DedicatedServerConfig.json"
@@ -30,6 +30,21 @@ def read_config():
     if not isinstance(settings, dict):
         raise ValueError("The server configuration must be a JSON object.")
     return settings, hashlib.sha256(raw).hexdigest()
+
+
+@requires_auth
+def dashboard_page():
+    try:
+        settings, _ = read_config()
+    except (OSError, ValueError):
+        settings = {}
+    return render_template("dashboard.html", server_name=settings.get("ServerName"),
+                           max_players=settings.get("MaxPlayers"))
+
+
+# Keep the upstream command page and all of its API endpoints available.
+app.add_url_rule("/commands", view_func=command_console, endpoint="command_console")
+app.view_functions["index"] = dashboard_page
 
 
 def local_missions(settings):

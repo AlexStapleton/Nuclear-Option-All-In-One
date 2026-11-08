@@ -38,13 +38,13 @@ The launcher creates `DedicatedServerConfig.json` in your data folder. Use the p
 
 On Linux, run `cat .panel.env` from the project folder and copy the value after `PANEL_PASSWORD=`. This password is separate from the in-game password.
 
-In a browser on Windows or any other device on your LAN, open `http://LINUX_LAN_IP:5000`. For example, if the Linux box's LAN address is `192.168.1.50`, open `http://192.168.1.50:5000`. Sign in as `admin` with the generated password. Once the game server is ready, open the player list to verify that the panel can reach it.
+In a browser on Windows or any other device on your LAN, open `http://LINUX_LAN_IP:5000`. For example, if the Linux box's LAN address is `192.168.1.50`, open `http://192.168.1.50:5000`. Sign in as `admin` with the generated password. Once the game server is ready, the dashboard shows the current and next missions and the player roster. Use **Advanced commands** for moderation and raw command responses.
 
 If the Linux host already uses port 5000, set `PANEL_PORT` in `.env`, run `sh start.sh` again, and use the new port in the URL. The panel uses HTTP with password authentication. Use it on a trusted LAN and keep its TCP port off your router's forwarding list. [Docker port publishing](https://docs.docker.com/engine/network/port-publishing/)
 
 ### Rename the server and pick missions
 
-Click **Server Settings & Missions** on the panel home page. Change the server name or use the mission picker to add entries to the rotation. You can reorder the entries, set each time limit in seconds, and choose the rotation order. Click **Save and reload** to write the config and ask the game to reload it. If the in-game server browser still shows the previous name, run `docker compose restart`. **Queue as next mission** sets a one-time override after the current mission ends. [Shockfront's command reference](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/tree/main/ServerCommands)
+Click **Settings & missions** in the dashboard navigation. Change the server name or use the mission picker to add entries to the rotation. You can reorder the entries, set each time limit in seconds, and choose the rotation order. Click **Save and reload** to write the config and ask the game to reload it. If the in-game server browser still shows the previous name, run `docker compose restart`. **Queue as next mission** sets a one-time override after the current mission ends. [Shockfront's command reference](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/tree/main/ServerCommands)
 
 - **Built-in missions.** Use the presets or enter an exact mission name with the appropriate group if it is missing from the picker.
 - **Local custom scenarios.** Copy the entire mission folder into the data folder's `missions/` subdirectory and refresh the page. For a folder named `My Scenario`, the picker looks for `missions/My Scenario/My Scenario.json`. If you set a custom `MissionDirectory`, point it somewhere under `/server` so both containers can see it.
@@ -54,7 +54,7 @@ If you are upgrading an existing installation, run `git pull` and `sh start.sh` 
 
 ## 4. Let friends join from outside your network
 
-Allow and forward **UDP 7777** for gameplay and **UDP 7778** for server queries to your Linux box. Keep the panel port and TCP 7779 private. If an outside player can join while a player on your LAN cannot find the server, check whether your router supports NAT loopback. [Shockfront's port defaults](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/blob/main/DedicatedServerGuide.md)
+Follow the [README's port and router setup](README.md#ports-and-router-setup) for the two UDP forwards, firewall pass rules, and the OPNsense hairpin NAT example.
 
 ## Day-to-day operation
 
