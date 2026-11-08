@@ -106,7 +106,10 @@ function renderRoster(result) {
 async function readStatus(name, render) {
     let result;
     try {
-        result = {status: 'fulfilled', value: await command(name)};
+        const response = await panelFetch(`/status/${name}`, {signal: AbortSignal.timeout(4000)});
+        const data = await response.json();
+        result = {status: response.ok && data.status_code === 'Success' ? 'fulfilled' : 'rejected',
+            value: data.status_code === 'Success' ? data.response : undefined};
     } catch {
         result = {status: 'rejected'};
     }

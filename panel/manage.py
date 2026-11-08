@@ -5,11 +5,15 @@ import json
 import math
 import os
 import re
+import socket
 import stat
+import struct
 from functools import wraps
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import Lock, Thread
+from time import monotonic, sleep
+from uuid import uuid4
 from zipfile import BadZipFile
 
 from flask import abort, jsonify, make_response, render_template, request
@@ -35,6 +39,10 @@ CONFIG_LOCK = Lock()
 MISSION_LOCK = Lock()
 MOD_LOCK = Lock()
 KICK_LOCK = Lock()
+RESTART_LOCK = Lock()
+STATUS_COMMANDS = ("get-mission", "get-mission-time", "get-player-list")
+STATUS_LOCKS = {name: Lock() for name in STATUS_COMMANDS}
+status_cache = {}
 KICK_COMMANDS = {"kick_player", "unkick_player", "clear_kicked_players"}
 STEAM_ID = re.compile(r"[0-9]{1,20}")
 BAN_ENTRY = re.compile(r"^\s*([0-9]{1,20})(?=$|[\s,;|:])")
@@ -64,6 +72,57 @@ def dashboard_page():
 app.view_functions["index"] = dashboard_page
 app.config["MAX_CONTENT_LENGTH"] = mission_import.UPLOAD_LIMIT + 64 * 1024
 panel_auth.install_auth(app, DATA_DIR)
+
+
+class StatusCommander(server_commands.RemoteCommander):
+    def send_command(self, name):
+        self.deadline = monotonic() + 1.5
+        payload = json.dumps({"name": name, "arguments": []}).encode()
+        try:
+            with socket.create_connection((self.host, self.port), timeout=1.5) as sock:
+                self.set_deadline(sock)
+                sock.sendall(struct.pack("<i", len(payload)) + payload)
+                return self._receive_response(sock)
+        except OSError:
+            return "NetworkError", None
+
+    def set_deadline(self, sock):
+        remaining = self.deadline - monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Game status request exceeded its deadline.")
+        sock.settimeout(remaining)
+
+    def _recv_n(self, sock, size):
+        if size > 2 * 1024 * 1024:
+            raise OSError("Game status response exceeds the size limit.")
+        data = bytearray()
+        while len(data) < size:
+            self.set_deadline(sock)
+            chunk = sock.recv(min(size - len(data), 65536))
+            if not chunk:
+                raise ConnectionResetError("Game closed the status connection.")
+            data.extend(chunk)
+        return data
+
+
+def read_game_status(name):
+    with STATUS_LOCKS[name]:
+        instance = game_instance()
+        cached = status_cache.get(name)
+        if cached and cached[0] == instance and cached[1] > monotonic():
+            return cached[2]
+        commander = StatusCommander("127.0.0.1", config.SERVER_PORTS[0])
+        result = commander.send_command(name)
+        status_cache[name] = (instance, monotonic() + 3, result)
+        return result
+
+
+@app.get("/status/<name>")
+def game_status(name):
+    if name not in STATUS_COMMANDS:
+        abort(404)
+    code, result = read_game_status(name)
+    return jsonify(status_code=code, response=result)
 
 
 @app.get("/commands")
@@ -333,17 +392,64 @@ def launch_status():
     try:
         saved = launch_settings.preferences(DATA_DIR)
         active, sample = launch_settings.launcher_status(DATA_DIR)
+        restart = launch_settings.restart_status(DATA_DIR, game_instance())
         if request.args.get("sample") == "1":
-            return jsonify(saved=saved, active=active, sample=sample)
+            return jsonify(saved=saved, active=active, sample=sample, restart=restart)
         settings, _ = read_config()
         profiles = launch_settings.load_profiles(DATA_DIR)
         plugin = launch_settings.performance_options(DATA_DIR)
         entries = [{"name": name, "server_name": snapshot.get("ServerName", ""),
                     "matches": profile_config(snapshot, settings) == settings}
                    for name, snapshot in sorted(profiles.items(), key=lambda item: item[0].casefold())]
-        return jsonify(saved=saved, active=active, sample=sample, plugin=plugin, profiles=entries)
+        return jsonify(saved=saved, active=active, sample=sample, restart=restart, plugin=plugin, profiles=entries)
     except (OSError, ValueError, RuntimeError):
         return jsonify(message="Could not read launch settings. Check the panel files in the server data directory."), 503
+
+
+@app.get("/settings/performance-history")
+def launch_history():
+    try:
+        return jsonify(samples=list(reversed(launch_settings.performance_history(DATA_DIR))))
+    except (OSError, ValueError):
+        return jsonify(message="Could not read performance history."), 503
+
+
+def record_performance_sample(previous=None):
+    _, sample = launch_settings.launcher_status(DATA_DIR)
+    if not sample:
+        return previous
+    identity = sample["instance"], sample["timestamp"]
+    if identity == previous:
+        return previous
+    records = launch_settings.performance_history(DATA_DIR)
+    if records and all(records[-1].get(key) == sample[key] for key in ("instance", "timestamp")):
+        return identity
+    mission_status, missions = read_game_status("get-mission")
+    time_status, timing = read_game_status("get-mission-time")
+    mission = (missions or {}).get("currentMission") if mission_status == "Success" else None
+    elapsed = (timing or {}).get("currentTime") if time_status == "Success" else None
+    key = (mission or {}).get("Key") or {}
+    # Only label a sample when its full window fits within the current mission.
+    same_mission = (type(elapsed) in (int, float) and elapsed >= sample["age"] + sample["seconds"] + 5
+                    and game_instance() == sample["instance"])
+    name = key.get("Name") if same_mission else None
+    if isinstance(name, str) and key.get("Group") == "Workshop":
+        name = resolve_workshop_titles([name], refresh=False).get(name, name)
+    sample["mission"] = name[:240] if isinstance(name, str) else None
+    records.append(sample)
+    launch_settings.private_write(DATA_DIR / launch_settings.HISTORY,
+                                  json.dumps(records[-launch_settings.HISTORY_LIMIT:]))
+    return identity
+
+
+def monitor_performance():
+    previous = None
+    while True:
+        try:
+            previous = record_performance_sample(previous)
+        except (OSError, ValueError, RuntimeError, AttributeError):
+            app.logger.warning("Could not save the latest performance sample.", exc_info=True)
+        sleep(5)
 
 
 def profile_config(snapshot, current):
@@ -366,13 +472,30 @@ def save_launch():
     try:
         if action == "preferences":
             launch_settings.save_preferences(DATA_DIR, data)
-            message = "Launch settings saved. Restart the game container to apply them."
+            message = "Launch settings saved. Restart the game to apply them."
+        elif action == "restart":
+            mode = data.get("mode")
+            if mode not in ("current", "update"):
+                raise ValueError("Choose a restart mode.")
+            with RESTART_LOCK, MOD_LOCK, CONFIG_LOCK:
+                instance = game_instance()
+                restart = launch_settings.restart_status(DATA_DIR, instance)
+                if restart.get("pending") or mod_job["running"]:
+                    return jsonify(message="A restart or mod installation is already in progress."), 409
+                if not restart["available"] or not launch_settings.INSTANCE.fullmatch(instance):
+                    return jsonify(message="Restart control is unavailable. Start the updated launcher first."), 409
+                settings, _ = read_config()
+                if server_options.effective_ports(settings) != ACTIVE_PORTS:
+                    return jsonify(message="Run sh start.sh on the Linux host to apply the saved UDP ports."), 409
+                launch_settings.private_write(DATA_DIR / launch_settings.RESTART_REQUEST,
+                                              f"{uuid4().hex} {mode} {instance}\n")
+            return jsonify(message="Restart requested."), 202
         elif action == "performance":
             with MOD_LOCK:
                 if mod_job["running"]:
                     return jsonify(message="Wait for the mod installation to finish."), 409
                 launch_settings.save_performance(DATA_DIR, data.get("workers"), data.get("timing"))
-            message = "NukeStats settings saved. Restart the game container to apply them."
+            message = "NukeStats settings saved. Restart the game to apply them."
         elif action in ("save-profile", "apply-profile", "delete-profile"):
             name = data.get("name")
             if not isinstance(name, str) or not launch_settings.PROFILE_NAME.fullmatch(name.strip()):
@@ -397,7 +520,7 @@ def save_launch():
                 else:
                     current, _ = read_config()
                     write_config(profile_config(profiles[name], current))
-                    message = f"Restored {name} to the saved config. Restart the game container to apply it."
+                    message = f"Restored {name} to the saved config. Restart the game to apply it."
             return jsonify(message=message, reload=action == "apply-profile")
         else:
             raise ValueError("Choose a launch setting.")
@@ -915,4 +1038,5 @@ if __name__ == "__main__":
     ssl_context = None
     if config.SSL_CERT_PATH and config.SSL_KEY_PATH:
         ssl_context = (config.SSL_CERT_PATH, config.SSL_KEY_PATH)
+    Thread(target=monitor_performance, daemon=True).start()
     app.run(host=config.FLASK_HOST, port=config.FLASK_PORT, ssl_context=ssl_context)

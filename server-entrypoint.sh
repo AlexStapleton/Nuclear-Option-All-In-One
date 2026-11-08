@@ -1,5 +1,15 @@
 #!/bin/bash
 set -eu
+launch_mode=${1:-update}
+restart_id=${2:-}
+exec 3>&1 4>&2
+
+restart_state() {
+    [[ -n $restart_id ]] || return 0
+    (umask 022
+     printf '%s %s\n' "$restart_id" "$1" > .panel-logs/.restart-state.tmp &&
+     mv -f -- .panel-logs/.restart-state.tmp .panel-logs/restart-state) || :
+}
 
 fps=60
 log_mib=1
@@ -83,19 +93,31 @@ if (prepare_logs); then
 else
     printf '%s\n' 'Could not open the panel log. Output will still go to Docker.' >&2
 fi
+rm -f -- .panel-logs/restart-ready || :
 
-printf '%s\n' '[Nuclear Option] Checking for a dedicated server update…'
-steamcmd +@ShutdownOnFailedCommand 1 +force_install_dir /server +login anonymous +app_update 3930080 +quit || {
-    status=$?
+flush_logs() {
     if [ -n "$log_pid" ]; then
-        # Docker stops the whole container when this shell exits. Flush the
-        # log copy first so an early Steam error is visible in the panel.
-        exec >&- 2>&-
+        exec >&3 2>&4
         wait "$log_pid" || :
     fi
-    exit "$status"
 }
-chmod +x ./NuclearOptionServer.x86_64
+
+if [[ $launch_mode == update ]]; then
+    restart_state updating
+    printf '%s\n' '[Nuclear Option] Checking for a dedicated server update…'
+    steamcmd +@ShutdownOnFailedCommand 1 +force_install_dir /server +login anonymous +app_update 3930080 +quit || {
+        status=$?
+        restart_state failed
+        flush_logs
+        exit "$status"
+    }
+fi
+restart_state starting
+if ! chmod +x ./NuclearOptionServer.x86_64; then
+    restart_state failed
+    flush_logs
+    exit 1
+fi
 export LD_LIBRARY_PATH=/server/linux64
 
 selected_mod_set() {
@@ -145,8 +167,27 @@ while :; do
         ./NuclearOptionServer.x86_64 "${args[@]}" &
     fi
     game_pid=$!
+    restart_state launched
+    restart_id=
+    if [[ -n $instance ]]; then
+        (umask 022
+         printf '%s\n' "$instance" > .panel-logs/.restart-ready.tmp &&
+         mv -f -- .panel-logs/.restart-ready.tmp .panel-logs/restart-ready) || :
+    fi
     restart_requested=false
     while kill -0 "$game_pid" 2>/dev/null; do
+        if [[ -n $instance && -f .panel-restart-request && ! -L .panel-restart-request ]] &&
+            IFS=' ' read -r -n 128 id mode requested_instance < .panel-restart-request &&
+            [[ $id =~ ^[a-f0-9]{32}$ && ( $mode == current || $mode == update ) && $requested_instance == "$instance" ]]; then
+            restart_id=$id
+            restart_state stopping
+            printf '[Nuclear Option] Restart requested (%s).\n' "$mode"
+            stop_game
+            game_pid=
+            flush_logs
+            exec 3>&- 4>&-
+            exec /bin/bash "$0" "$mode" "$id"
+        fi
         if [[ $(selected_mod_set) != "$selected" ]]; then
             printf '%s\n' '[Nuclear Option] Restarting to apply the selected mod set…'
             stop_game
@@ -156,7 +197,9 @@ while :; do
         sleep 2
     done
     if ! "$restart_requested" && [[ $(selected_mod_set) == "$selected" ]]; then
-        wait "$game_pid"
-        exit $?
+        status=0
+        wait "$game_pid" || status=$?
+        flush_logs
+        exit "$status"
     fi
 done

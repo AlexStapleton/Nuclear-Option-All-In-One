@@ -16,6 +16,9 @@ RANGES = {"fps": (10, 240), "log_mib": (1, 32), "log_files": (1, 10)}
 INSTANCE = re.compile(r"[0-9a-f-]{36}")
 PROFILE_NAME = re.compile(r"[^\x00-\x1f\x7f]{1,60}")
 PERF_FIELDS = {"JobWorkers": "workers", "Timing": "timing"}
+RESTART_REQUEST = ".panel-restart-request"
+HISTORY = ".panel-performance-history.json"
+HISTORY_LIMIT = 120
 
 
 def private_write(path, text):
@@ -138,6 +141,32 @@ def save_performance(data_dir, workers, timing):
     private_write(path, "\n".join(lines) + "\n")
 
 
+def restart_status(data_dir, instance):
+    logs = data_dir / ".panel-logs"
+    ready = small_file(logs / "restart-ready", 64)
+    available = bool(ready and ready.strip() == instance)
+    raw = small_file(data_dir / RESTART_REQUEST, 128)
+    if not raw:
+        return {"available": available, "phase": None}
+    request = raw.split()
+    if len(request) != 3:
+        return {"available": available, "phase": None}
+    identifier, mode, requested_instance = request
+    raw = small_file(logs / "restart-state", 128)
+    state = raw.split() if raw else []
+    phase = state[1] if len(state) == 2 and state[0] == identifier else "queued"
+    if phase not in ("launched", "failed") and requested_instance != instance and available:
+        phase = "superseded"
+    return {"available": available, "phase": phase, "mode": mode,
+            "pending": phase in ("queued", "stopping", "updating", "starting")}
+
+
+def performance_history(data_dir):
+    raw = small_file(data_dir / HISTORY, 256 * 1024)
+    records = json.loads(raw) if raw else []
+    return [row for row in records[-HISTORY_LIMIT:] if isinstance(row, dict)] if isinstance(records, list) else []
+
+
 def launcher_status(data_dir):
     logs = data_dir / ".panel-logs"
     try:
@@ -151,7 +180,8 @@ def launcher_status(data_dir):
     try:
         raw = small_file(logs / "performance-sample", 20000)
         token, timestamp, payload = raw.split(" ", 2) if raw else ("", "0", "{}")
-        age = int(time()) - int(timestamp)
+        timestamp = int(timestamp)
+        age = int(time()) - timestamp
         if token != instance or not 0 <= age <= 150:
             return active, None
         data = json.loads(payload)
@@ -166,6 +196,8 @@ def launcher_status(data_dir):
             return active, None
         return active, {"fps": round(frames / seconds, 1), "frame_ms": measure("ft_ms"),
                         "p95_ms": measure("ft_p95"), "workers": measure("workers"),
-                        "workers_max": measure("workers_max"), "age": age}
+                        "workers_max": measure("workers_max"), "age": age, "timestamp": timestamp,
+                        "seconds": seconds, "instance": instance, "worst_ms": measure("ft_max"),
+                        "players": measure("humans"), "ai": measure("ai_aircraft")}
     except (OSError, ValueError, RecursionError):
         return active, None

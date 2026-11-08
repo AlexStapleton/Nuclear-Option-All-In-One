@@ -1,7 +1,12 @@
 <section class="card server-configuration" id="launch-settings" aria-labelledby="launch-heading"
          data-url="{{ url_for('launch_status') }}">
     <h2 id="launch-heading">Launch settings</h2>
-    <p class="meta">These settings take effect when the game container restarts.</p>
+    <p class="meta">Saved launch settings take effect when the game restarts.</p>
+    <div class="actions launch-restart">
+        <button type="button" data-restart="current" disabled>Restart current build</button>
+        <button type="button" data-restart="update" disabled>Update and restart</button>
+    </div>
+    <p class="meta command-status" id="launch-restart-status" role="status"></p>
     <div class="settings-layout launch-layout">
         <div>
             <h3>Performance &amp; logs</h3>
@@ -55,6 +60,16 @@
             <ul id="launch-profiles" class="workshop-library" aria-label="Startup profiles" hidden></ul>
         </div>
     </div>
+    <details class="mission-source" id="launch-history" data-url="{{ url_for('launch_history') }}">
+        <summary>Performance history</summary>
+        <p class="meta" id="launch-history-status" role="status">Enable NukeStats frame timing to collect samples.</p>
+        <div class="table-wrap" id="launch-history-table" hidden>
+            <table>
+                <thead><tr><th scope="col">Time</th><th scope="col">Mission</th><th scope="col">FPS</th><th scope="col">Avg / p95 / worst (ms)</th><th scope="col">Players / AI aircraft</th><th scope="col">Workers</th></tr></thead>
+                <tbody id="launch-history-rows"></tbody>
+            </table>
+        </div>
+    </details>
     <dialog id="launch-profile-dialog" class="card action-dialog" aria-labelledby="launch-profile-dialog-title">
         <form method="dialog">
             <h3 id="launch-profile-dialog-title"></h3>
@@ -62,6 +77,16 @@
             <div class="actions">
                 <button value="cancel" autofocus>Cancel</button>
                 <button value="confirm" id="launch-profile-confirm" class="danger">Confirm</button>
+            </div>
+        </form>
+    </dialog>
+    <dialog id="launch-restart-dialog" class="card action-dialog" aria-labelledby="launch-restart-title">
+        <form method="dialog">
+            <h3 id="launch-restart-title"></h3>
+            <p id="launch-restart-message" class="meta"></p>
+            <div class="actions">
+                <button value="cancel" autofocus>Cancel</button>
+                <button value="confirm" class="danger">Confirm restart</button>
             </div>
         </form>
     </dialog>

@@ -4,6 +4,8 @@
 .panel-kicks.json
 .panel-launch-settings
 .panel-startup-profiles.json
+.panel-restart-request
+.panel-performance-history.json
 /server/
 __pycache__/
 *.py[cod]

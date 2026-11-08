@@ -56,7 +56,11 @@ Change the server name and game join password under **Server settings**, then cl
 
 ### Launch settings and performance
 
-Open **Settings & missions → Launch settings**. Choose **30 FPS**, **60 FPS** (the existing default), or a custom cap between 10 and 240. The card shows the cap used by the last launch and indicates when a saved change is pending. You can also retain 1–10 game logs, each up to 1–32 MiB. These settings apply to the files in `.panel-logs`. Docker and BepInEx keep their own logs. To apply launch changes after saving, run `docker compose restart nuclear-option` from the Linux project folder. This interrupts the current round.
+Use **Restart current build** to apply saved launch settings or a restored profile using the installed game. **Update and restart** runs SteamCMD before launching. Both actions disconnect active players and report progress in the panel. Changes to the Docker UDP mappings still require running `sh start.sh` on the host.
+
+Expand **Performance history** to see the latest 120 NukeStats samples collected while the panel is running. Each row shows measured FPS, frame times, player and AI aircraft counts, and physics workers when the plugin reports them. A sample gets a mission name when its full measurement window can be attributed to that mission.
+
+Open **Settings & missions → Launch settings**. Choose **30 FPS**, **60 FPS** (the existing default), or a custom cap between 10 and 240. The card shows the cap used by the last launch and indicates when a saved change is pending. You can also retain 1–10 game logs, each up to 1–32 MiB. These settings apply to the files in `.panel-logs`. Docker and BepInEx keep their own logs.
 
 Under **Startup profiles**, save the current game config under a name. **Restore** replaces the saved game config and takes effect on restart. Profiles include the join password and mission rotation. Docker UDP mappings, launcher preferences, and the selected mod set are managed separately. Keep profile backups private because they contain the game join password.
 

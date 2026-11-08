@@ -17,7 +17,7 @@ services:
     stop_grace_period: 30s
     logging: *logging
     environment:
-      PANEL_MODS_PROTOCOL: "3"
+      PANEL_MODS_PROTOCOL: "4"
     ports:
       - "${NO_GAME_PORT:-7777}:${NO_GAME_PORT:-7777}/udp"
       - "${NO_QUERY_PORT:-7778}:${NO_QUERY_PORT:-7778}/udp"
