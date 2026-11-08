@@ -3,67 +3,64 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Server Settings &amp; Missions</title>
-    <style>
-        body { font: 16px/1.5 system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; }
-        fieldset { border: 1px solid #aab3bf; border-radius: .5rem; margin: 1.25rem 0; padding: 1rem; }
-        legend { font-weight: 700; }
-        label { display: grid; gap: .3rem; margin-bottom: .75rem; }
-        input, select, button { font: inherit; padding: .35rem .55rem; }
-        button { cursor: pointer; }
-        ol { padding-left: 1.5rem; }
-        li { padding: .45rem 0; }
-        li button { margin-left: .35rem; }
-        li label { display: inline-flex; align-items: center; margin: 0 .5rem; }
-        li input { width: 6rem; }
-        .row { display: flex; flex-wrap: wrap; gap: .6rem; }
-        .primary { background: #1656b7; color: white; border: 1px solid #1656b7; border-radius: .25rem; }
-    </style>
+    <title>Settings &amp; missions · Nuclear Option</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
 </head>
 <body>
-    <a href="/">Dashboard</a> · <a href="/commands">Advanced commands</a>
-    <h1>Server Settings &amp; Missions</h1>
-    <fieldset>
-        <legend>Saved configuration</legend>
-        <label>Server name <input id="server-name" required></label>
-        <label>Rotation order
-            <select id="rotation-type">
-                <option value="0">In order</option>
-                <option value="1">Random (repeats allowed)</option>
-                <option value="2">Shuffle (play each before repeating)</option>
-            </select>
-        </label>
-        <ol id="rotation" aria-label="Mission rotation"></ol>
-        <button type="button" id="save" class="primary">Save and reload</button>
-    </fieldset>
-    <fieldset>
-        <legend>Choose a mission</legend>
-        <label>Mission picker
-            <select id="preset">
-                <option value="">Enter a mission name or Workshop link</option>
-                <optgroup label="Built-in multiplayer presets">
-                    {% for name in stock %}<option data-group="BuiltIn" value="{{ name }}">{{ name }}</option>{% endfor %}
-                </optgroup>
-                {% if custom %}<optgroup label="Local custom scenarios">
-                    {% for name in custom %}<option data-group="User" value="{{ name }}">{{ name }}</option>{% endfor %}
-                </optgroup>{% endif %}
-            </select>
-        </label>
-        <div class="row">
-            <label>Group <select id="group">
-                {% for group in groups %}<option value="{{ group }}">{{ group }}</option>{% endfor %}
-            </select></label>
-            <label>Name, Workshop ID or link <input id="mission-name" required></label>
-            <label>Time limit (seconds) <input id="mission-time" type="number" min="1" step="any" value="7200"></label>
+    {% include 'navigation.html' %}
+    <main class="shell page">
+        <header class="hero">
+            <div>
+                <p class="eyebrow">Server administration</p>
+                <h1>Settings &amp; missions</h1>
+                <p class="meta">Rename your server, plan the rotation, or queue a mission for the next round.</p>
+            </div>
+        </header>
+        <p role="status" id="status" class="settings-feedback"></p>
+        <div class="settings-layout">
+            <section class="card" aria-labelledby="configuration-title">
+                <h2 id="configuration-title">Saved configuration</h2>
+                <label class="field">Server name <input id="server-name" required></label>
+                <label class="field">Rotation order
+                    <select id="rotation-type">
+                        <option value="0">In order</option>
+                        <option value="1">Random (repeats allowed)</option>
+                        <option value="2">Shuffle (play each before repeating)</option>
+                    </select>
+                </label>
+                <h3>Mission rotation</h3>
+                <ol id="rotation" class="rotation-list" aria-label="Mission rotation"></ol>
+                <button type="button" id="save" class="primary">Save and reload</button>
+            </section>
+            <section class="card" aria-labelledby="picker-title">
+                <h2 id="picker-title">Choose a mission</h2>
+                <label class="field">Mission picker
+                    <select id="preset">
+                        <option value="">Enter a mission name or Workshop link</option>
+                        <optgroup label="Built-in multiplayer presets">
+                            {% for name in stock %}<option data-group="BuiltIn" value="{{ name }}">{{ name }}</option>{% endfor %}
+                        </optgroup>
+                        {% if custom %}<optgroup label="Local custom scenarios">
+                            {% for name in custom %}<option data-group="User" value="{{ name }}">{{ name }}</option>{% endfor %}
+                        </optgroup>{% endif %}
+                    </select>
+                </label>
+                <div class="mission-fields">
+                    <label class="field">Group <select id="group">
+                        {% for group in groups %}<option value="{{ group }}">{{ group }}</option>{% endfor %}
+                    </select></label>
+                    <label class="field">Time limit (seconds) <input id="mission-time" type="number" min="1" step="any" value="7200"></label>
+                </div>
+                <label class="field">Name, Workshop ID or link <input id="mission-name" required></label>
+                <div class="actions">
+                    <button type="button" id="add">Add to rotation</button>
+                    <button type="button" id="next">Queue as next mission</button>
+                </div>
+                <p class="meta">For a new Workshop item, add it to the rotation and save so the game can download it before you queue it.</p>
+                <p class="meta">For a local scenario, copy its mission folder to the server's mission directory and refresh this page.</p>
+            </section>
         </div>
-        <div class="row">
-            <button type="button" id="add">Add to rotation</button>
-            <button type="button" id="next">Queue as next mission</button>
-        </div>
-        <p>Save the rotation after adding a mission. For a new Workshop item, add and save it first so the game can download it before you queue it.</p>
-        <p>For a local scenario, copy its mission folder to the server's mission directory and refresh this page.</p>
-    </fieldset>
-    <p role="status" id="status"></p>
+    </main>
     <script>
         const initial = {{ initial | tojson }};
         const byId = (id) => document.getElementById(id);
@@ -90,9 +87,13 @@
         function showRotation() {
             byId('rotation').replaceChildren(...rotation.map((mission, index) => {
                 const item = document.createElement('li');
-                item.textContent = `${mission.Key?.Name ?? 'Unnamed mission'} (${mission.Key?.Group ?? 'Unknown group'}) `;
+                const title = document.createElement('strong');
+                title.textContent = mission.Key?.Name ?? 'Unnamed mission';
+                const group = document.createElement('span');
+                group.className = 'meta';
+                group.textContent = mission.Key?.Group ?? 'Unknown group';
                 const label = document.createElement('label');
-                label.textContent = 'Seconds ';
+                label.textContent = 'Seconds';
                 const seconds = document.createElement('input');
                 seconds.type = 'number';
                 seconds.min = '1';
@@ -100,10 +101,13 @@
                 seconds.value = mission.MaxTime ?? 7200;
                 seconds.addEventListener('input', () => { mission.MaxTime = seconds.valueAsNumber; });
                 label.append(seconds);
-                item.append(label,
+                const controls = document.createElement('div');
+                controls.className = 'actions';
+                controls.append(label,
                     action('Up', () => move(index, -1), index === 0),
                     action('Down', () => move(index, 1), index === rotation.length - 1),
                     action('Remove', () => { rotation.splice(index, 1); showRotation(); }));
+                item.append(title, group, controls);
                 return item;
             }));
         }

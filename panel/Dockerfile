@@ -12,8 +12,9 @@ COPY config.py /app/config.py
 COPY manage.py /app/manage.py
 COPY settings.html /app/templates/settings.html
 COPY dashboard.html /app/templates/dashboard.html
+COPY navigation.html /app/templates/navigation.html
 COPY dashboard.css dashboard.js /app/static/
-RUN sed -i '/<h1 class="mb-4">Nuclear Option Server Manager<\/h1>/a\        <p><a href="/" class="btn btn-secondary">Dashboard</a> <a href="/settings" class="btn btn-primary">Server Settings \&amp; Missions</a></p>' templates/index.html \
-    && grep -q 'href="/settings"' templates/index.html
+COPY prepare_console.py /tmp/prepare_console.py
+RUN python /tmp/prepare_console.py templates/index.html
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 CMD ["python", "manage.py"]

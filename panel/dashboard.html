@@ -8,16 +8,7 @@
     <script defer src="{{ url_for('static', filename='dashboard.js') }}"></script>
 </head>
 <body>
-    <header class="topbar">
-        <div class="shell bar-content">
-            <a class="brand" href="{{ url_for('index') }}"><span class="mark" aria-hidden="true">N</span>Nuclear Option</a>
-            <nav aria-label="Server management">
-                <a href="{{ url_for('index') }}" aria-current="page">Overview</a>
-                <a href="{{ url_for('settings_page') }}">Settings &amp; missions</a>
-                <a href="{{ url_for('command_console') }}">Advanced commands</a>
-            </nav>
-        </div>
-    </header>
+    {% include 'navigation.html' %}
 
     <main class="shell">
         <section class="hero" aria-labelledby="server-name">

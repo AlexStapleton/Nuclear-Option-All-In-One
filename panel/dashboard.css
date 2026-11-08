@@ -12,7 +12,7 @@
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--background); color: var(--text); }
 a { color: var(--accent); text-underline-offset: .2em; }
-button, textarea { font: inherit; }
+button, input, select, textarea { font: inherit; }
 button { color: var(--text); background: #1b2a3a; border: 1px solid #3a5065; border-radius: .5rem; padding: .5rem .85rem; cursor: pointer; }
 button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: .55; cursor: wait; }
@@ -60,13 +60,54 @@ td:first-child { font-family: ui-monospace, monospace; }
 
 form { margin-top: .9rem; }
 label { display: block; margin-bottom: .35rem; font-weight: 600; }
-textarea { display: block; width: 100%; padding: .6rem; color: var(--text); background: #0d1721; border: 1px solid #3a5065; border-radius: .5rem; resize: vertical; }
+input, select, textarea { display: block; width: 100%; min-width: 0; padding: .6rem; color: var(--text); background: #0d1721; border: 1px solid #3a5065; border-radius: .5rem; }
+textarea { resize: vertical; }
 .primary { margin-top: .7rem; color: #09231f; background: var(--accent); border-color: var(--accent); font-weight: 700; }
 #broadcast-status:not(:empty) { margin-top: .65rem; }
 footer { padding-block: 1.2rem 2rem; }
 
+.page { padding-bottom: 2rem; }
+.page .hero .meta { margin-top: .7rem; }
+.page h2, .page h3, .page h5 { margin: 0 0 .75rem; }
+.page h2, .page h3 { font-size: 1.15rem; }
+.page h5 { font-size: 1rem; }
+.settings-layout, .console-layout { display: grid; align-items: start; gap: 1rem; }
+.settings-layout { grid-template-columns: 1fr 1fr; }
+.settings-layout .field { display: grid; gap: .35rem; margin-bottom: .85rem; }
+.settings-layout .card > .meta { margin-top: .75rem; }
+.settings-feedback:not(:empty) { margin: 0 0 1rem; padding: .75rem 1rem; border-left: 3px solid var(--accent); background: var(--panel); }
+.settings-feedback:empty { margin: 0; }
+.mission-fields { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+.rotation-list { padding-left: 1.25rem; margin: 0; }
+.rotation-list li { border-top: 1px solid var(--line); padding: .75rem 0; }
+.rotation-list strong { margin-right: .5rem; overflow-wrap: anywhere; }
+.rotation-list .actions { margin-top: .5rem; }
+.rotation-list label { display: flex; gap: .4rem; align-items: center; margin: 0; font-size: .9rem; }
+.rotation-list input { width: 6rem; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
+
+.console-layout { grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); }
+.console-controls > .row > .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin-bottom: .75rem; }
+.console-controls .col-md-12 { grid-column: 1 / -1; }
+.console-controls .command-card { height: 100%; }
+.console-controls .command-card .mb-3 { margin-bottom: .75rem; }
+.console-controls [data-command] { margin: .15rem .15rem .15rem 0; }
+.console-controls .btn-primary { color: #09231f; background: var(--accent); border-color: var(--accent); font-weight: 700; }
+.console-controls .btn-danger { color: #ffc8c8; background: #48232c; border-color: #935563; }
+.console-output { position: sticky; top: 1rem; }
+.console-output .command-card { border: 0; padding: 0 0 1rem; }
+.command-info { color: var(--muted); font-size: .85rem; }
+.command-name { color: var(--accent); margin-right: .5rem; }
+#response-area { background: #0d1721; border: 1px solid var(--line); border-radius: .5rem; min-height: 6rem; max-height: 45vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: .8rem; margin-bottom: 0; }
+
+@media (prefers-reduced-motion: no-preference) {
+    .response-pulse { animation: response-flash .5s ease-out; }
+    @keyframes response-flash { from { border-color: var(--accent); } }
+}
+
 @media (max-width: 44rem) {
     .hero { padding-top: 1.65rem; }
     .connection .meta { text-align: left; }
-    .overview, .details { grid-template-columns: 1fr; }
+    .overview, .details, .settings-layout, .console-layout, .console-controls > .row > .row { grid-template-columns: 1fr; }
+    .console-output { position: static; grid-row: 1; }
 }
