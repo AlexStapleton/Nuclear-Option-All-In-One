@@ -74,8 +74,14 @@
                 <div id="workshop-controls" data-url="{{ url_for('check_workshop') }}" hidden>
                     <p class="meta" id="workshop-status" role="status"></p>
                     <p class="meta" id="workshop-details" role="status"></p>
-                    <button type="button" id="check-workshop">Check item on Steam</button>
+                    <button type="button" id="check-workshop">Check Steam item and mods</button>
                     <button type="button" id="cancel-workshop-queue" hidden>Cancel automatic queue</button>
+                    <section id="workshop-mods" class="workshop-mods" aria-labelledby="workshop-mods-heading" hidden>
+                        <h3 id="workshop-mods-heading">Mod requirements</h3>
+                        <p class="meta" id="workshop-mods-status" role="status"></p>
+                        <ul id="workshop-mods-list" hidden></ul>
+                        <p class="meta"><a id="workshop-source" target="_blank" rel="noopener">Mission on Steam</a> · <a href="https://github.com/Combat787/NOMM/releases" target="_blank" rel="noopener">Get NOMM</a></p>
+                    </section>
                 </div>
                 <p class="meta"><a href="https://steamcommunity.com/app/2168680/workshop/" target="_blank" rel="noopener">Browse the Nuclear Option Workshop</a>, then paste an item link here.</p>
                 <p class="meta"><a href="#import-heading">Import and edit a local mission</a>.</p>

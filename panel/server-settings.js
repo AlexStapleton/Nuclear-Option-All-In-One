@@ -29,6 +29,7 @@ const workshopControls = byId('workshop-controls');
 const workshopStatusText = byId('workshop-status');
 const workshopDetailsText = byId('workshop-details');
 const workshopCheckButton = byId('check-workshop');
+const workshopMods = byId('workshop-mods');
 let workshopTimer;
 let workshopRequest = 0;
 let inspectedItem = '';
@@ -38,6 +39,45 @@ const cancelWorkshopQueue = byId('cancel-workshop-queue');
 
 function isWorkshopLink(value) {
     return /^(?:https?:\/\/)?(?:www\.)?steamcommunity\.com\/(?:sharedfiles|workshop)\/filedetails\/?\?/i.test(value);
+}
+
+function showWorkshopMods(id, mods, customMap) {
+    workshopMods.hidden = !mods?.required;
+    const list = byId('workshop-mods-list');
+    list.replaceChildren();
+    if (!mods?.required) return;
+
+    const {requirements, catalog_unavailable: unavailable} = mods;
+    byId('workshop-source').href = `https://steamcommunity.com/sharedfiles/filedetails/?id=${encodeURIComponent(id)}`;
+    const status = unavailable ? 'The NOMM catalog is unavailable. Try again to look up the listed mods.'
+        : requirements.length ? 'Requirements listed by the mission author. Release links come from NOMM’s catalog. The panel does not check what’s installed.'
+            : 'Steam flags a mod requirement but lists no names the panel can read. See the mission on Steam.';
+    byId('workshop-mods-status').textContent = customMap
+        ? `${status} The server and players need the same map build.` : status;
+
+    for (const mod of requirements) {
+        const row = document.createElement('li');
+        const name = document.createElement('strong');
+        name.textContent = `${mod.name}${mod.requested_version ? ` v${mod.requested_version}` : ''}`;
+        row.append(name);
+        const detail = document.createElement('span');
+        detail.className = 'meta';
+        if (mod.url) {
+            const link = document.createElement('a');
+            link.href = mod.url;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.textContent = mod.matched_version ? `${mod.package} v${mod.matched_version}` : `${mod.package} releases`;
+            detail.append(link);
+            if (mod.game_version) detail.append(` · Catalog game version ${mod.game_version}`);
+            if (mod.requested_version && !mod.matched_version) detail.append(' · Requested version not listed');
+        } else {
+            detail.textContent = unavailable ? 'Catalog unavailable' : 'No matching release link in the catalog';
+        }
+        row.append(detail);
+        list.append(row);
+    }
+    list.hidden = !requirements.length;
 }
 
 async function refreshWorkshop(lookup = false) {
@@ -51,13 +91,17 @@ async function refreshWorkshop(lookup = false) {
         inspectedItem = value;
         incompatibleItem = '';
         workshopDetailsText.textContent = '';
+        workshopMods.hidden = true;
     }
     workshopCheckButton.disabled = !value || lookup;
     if (!selected || !value) {
         workshopStatusText.textContent = 'Paste a Steam Workshop item link or ID.';
         return;
     }
-    if (lookup) workshopDetailsText.textContent = 'Checking Steam…';
+    if (lookup) {
+        workshopMods.hidden = true;
+        workshopDetailsText.textContent = 'Checking Steam and the mod catalog…';
+    }
     try {
         const query = new URLSearchParams({item: value});
         if (lookup) query.set('details', '1');
@@ -65,16 +109,15 @@ async function refreshWorkshop(lookup = false) {
         const item = await response.json();
         if (request !== workshopRequest) return;
         workshopStatusText.textContent = item.message;
-        if (lookup && response.ok) {
-            const {title, message, custom_map, mod_required} = item.details;
-            const requirement = custom_map ? 'Requires the NOCustomMaps mod and the matching map on the server.'
-                : mod_required ? 'Steam marks this mission as requiring a mod.' : '';
-            workshopDetailsText.textContent = [title || message, requirement].filter(Boolean).join(' · ');
+        if (lookup) {
+            const {title, message, custom_map, mods} = item.details ?? {};
+            workshopDetailsText.textContent = response.ok ? title || message || '' : '';
+            showWorkshopMods(item.id, mods, custom_map);
             if (title) {
                 workshopTitles.set(item.id, title);
                 showRotation();
             }
-            incompatibleItem = item.details.incompatible ? value : '';
+            incompatibleItem = item.details?.incompatible ? value : '';
         }
         const pending = pendingWorkshopQueue;
         if (pending && item.id === pending.mission.Key.Name) {
@@ -95,6 +138,7 @@ async function refreshWorkshop(lookup = false) {
         if (item.state === 'waiting') workshopTimer = setTimeout(refreshWorkshop, 5000);
     } catch {
         if (request !== workshopRequest) return;
+        if (lookup) workshopDetailsText.textContent = '';
         workshopStatusText.textContent = 'The panel could not check Workshop status. Try again.';
         if (pendingWorkshopQueue && Date.now() < pendingWorkshopQueue.until) {
             workshopTimer = setTimeout(refreshWorkshop, 5000);
@@ -114,6 +158,7 @@ function workshopInputChanged() {
     }
     clearTimeout(workshopTimer);
     workshopRequest += 1;
+    if (byId('mission-name').value.trim() !== inspectedItem) workshopMods.hidden = true;
     if (isWorkshopLink(byId('mission-name').value.trim())) byId('group').value = 'Workshop';
     workshopControls.hidden = byId('group').value !== 'Workshop';
     workshopTimer = setTimeout(refreshWorkshop, 250);
