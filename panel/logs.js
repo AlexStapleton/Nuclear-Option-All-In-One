@@ -4,6 +4,8 @@ const refreshButton = document.getElementById('log-refresh');
 const pauseButton = document.getElementById('log-pause');
 const source = document.getElementById('log-source');
 let paused = false;
+let etag = '';
+let sourceVersion = 0;
 
 function jumpToLatest() {
     output.scrollTop = output.scrollHeight;
@@ -12,20 +14,24 @@ function jumpToLatest() {
 async function refreshLogs() {
     if (refreshButton.disabled) return;
     const selected = source.value;
+    const version = sourceVersion;
     refreshButton.disabled = true;
     try {
         const query = new URLSearchParams({source: selected});
-        const response = await panelFetch(`${output.dataset.url}?${query}`, {signal: AbortSignal.timeout(5000)});
+        const headers = etag ? {'If-None-Match': etag} : {};
+        const response = await panelFetch(`${output.dataset.url}?${query}`, {headers, signal: AbortSignal.timeout(5000)});
+        if (response.status === 304) return;
         if (!response.ok) throw new Error('Log unavailable');
         const log = await response.json();
-        if (selected !== source.value) return;
+        if (version !== sourceVersion) return;
+        etag = response.headers.get('ETag') || '';
         const follow = output.scrollHeight - output.scrollTop - output.clientHeight < 8;
         if (output.textContent !== log.text) {
             output.textContent = log.text;
             if (follow) jumpToLatest();
         }
         if (log.text) {
-            status.textContent = `Showing up to 64 KiB · Checked at ${new Date().toLocaleTimeString()}`;
+            status.textContent = `Showing up to 64 KiB · Updated at ${new Date().toLocaleTimeString()}`;
         } else {
             status.textContent = log.available
                 ? 'The log file is empty. Waiting for server output.'
@@ -34,10 +40,13 @@ async function refreshLogs() {
                     : 'No game log yet. Check that the game container is running the current setup.';
         }
     } catch {
-        if (selected === source.value) status.textContent = 'Could not read the selected log.';
+        if (version === sourceVersion) {
+            etag = '';
+            status.textContent = 'Could not read the selected log.';
+        }
     } finally {
         refreshButton.disabled = false;
-        if (selected !== source.value) refreshLogs();
+        if (version !== sourceVersion) refreshLogs();
     }
 }
 
@@ -47,6 +56,8 @@ function refreshIfActive() {
 
 refreshButton.addEventListener('click', refreshLogs);
 source.addEventListener('change', () => {
+    sourceVersion++;
+    etag = '';
     output.textContent = '';
     status.textContent = 'Loading selected log…';
     refreshLogs();

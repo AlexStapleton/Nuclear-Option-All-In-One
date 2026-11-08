@@ -12,7 +12,7 @@ from tempfile import NamedTemporaryFile
 from threading import Lock, Thread
 from zipfile import BadZipFile
 
-from flask import abort, jsonify, render_template, request
+from flask import abort, jsonify, make_response, render_template, request
 from werkzeug.exceptions import RequestEntityTooLarge
 
 import config
@@ -190,9 +190,31 @@ def log_tail():
             abort(503, "The mod loader log could not be read.")
     else:
         abort(400, "Unknown log source.")
+    candidates = []
+    total = 0
+    for path in paths:
+        try:
+            info = path.stat()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            abort(503, "The server log could not be read.")
+        if not stat.S_ISREG(info.st_mode):
+            abort(503, "The server log could not be read.")
+        candidates.append((path, info))
+        total += info.st_size
+        if total >= LOG_TAIL_BYTES:
+            break
+    versions = [(path.name, info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+                for path, info in candidates]
+    etag = hashlib.sha256(repr((source, versions)).encode()).hexdigest()
+    if request.if_none_match.contains_weak(etag):
+        response = make_response("", 304)
+        response.set_etag(etag, weak=True)
+        return response
     chunks = []
     remaining = LOG_TAIL_BYTES
-    for path in paths:
+    for path, _ in candidates:
         try:
             with path.open("rb") as stream:
                 end = stream.seek(0, os.SEEK_END)
@@ -212,7 +234,7 @@ def log_tail():
         if newline >= 0:
             raw = raw[newline + 1:]
     response = jsonify(text=raw.decode("utf-8", errors="replace"), available=bool(chunks))
-    response.headers["Cache-Control"] = "no-store"
+    response.set_etag(etag, weak=True)
     return response
 
 

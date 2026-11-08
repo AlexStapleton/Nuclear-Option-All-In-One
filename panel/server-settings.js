@@ -130,18 +130,20 @@ async function loadWorkshopLibrary() {
             ...result.missions.map(mission => ({name: mission.id, title: mission.title, group: 'Workshop'})),
         ];
         renderAvailableMissions();
-        const ids = result.missions.slice(0, 96).map(mission => mission.id);
-        panelLabels('/workshop/titles', ids, 'titles').then(showWorkshopTitles);
+        loadWorkshopTitles(result.missions.map(mission => mission.id));
     } catch (error) {
         status.textContent = error.message || 'Could not read the server’s Workshop downloads.';
+        loadWorkshopTitles();
     } finally {
         refreshLibrary.disabled = false;
     }
 }
 
-async function loadWorkshopTitles() {
+async function loadWorkshopTitles(available = []) {
     const keys = rotation.filter(mission => mission.Key?.Group === 'Workshop').map(mission => mission.Key.Name);
-    showWorkshopTitles(await panelLabels('/workshop/titles', [...keys, ...Array.from(byId('saved-workshop').children, option => option.value)], 'titles'));
+    const saved = Array.from(byId('saved-workshop').children, option => option.value);
+    const ids = [...new Set([...keys, ...saved, ...available])].slice(0, 96);
+    showWorkshopTitles(await panelLabels('/workshop/titles', ids, 'titles'));
 }
 
 function showWorkshopMods(id, mods, customMap) {
@@ -424,8 +426,6 @@ document.addEventListener('settings-saved', ({detail: {result, options}}) => {
     }
     updateMissionOptions('local-missions', 'User', result.local_missions);
     updateMissionOptions('saved-workshop', 'Workshop', result.workshop_items);
-    loadWorkshopTitles();
     loadWorkshopLibrary();
     refreshWorkshop();
 });
-loadWorkshopTitles();

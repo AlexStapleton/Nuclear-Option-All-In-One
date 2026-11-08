@@ -245,6 +245,19 @@ def cache_root(data_dir):
     return root if root.is_relative_to(data_dir.resolve()) and root.is_dir() else None
 
 
+@lru_cache(maxsize=1024)
+def valid_mission_file(file, limit, _version):
+    with file.open("rb") as stream:
+        raw = stream.read(limit + 1)
+    if len(raw) > limit:
+        return False
+    try:
+        mission = json.loads(raw)
+    except (ValueError, RecursionError):
+        return False
+    return isinstance(mission, dict) and isinstance(mission.get("missionSettings"), dict)
+
+
 def find_mission_file(cache, limit):
     if cache.resolve() != cache or not cache.is_dir():
         return None
@@ -253,13 +266,12 @@ def find_mission_file(cache, limit):
                 or not file.is_file() or not file.resolve().is_relative_to(cache)):
             continue
         try:
-            with file.open("rb") as stream:
-                raw = stream.read(limit + 1)
-            if len(raw) <= limit:
-                mission = json.loads(raw)
-                if isinstance(mission, dict) and isinstance(mission.get("missionSettings"), dict):
-                    return file
-        except (OSError, ValueError, RecursionError):
+            info = file.stat()
+            # Steam can overwrite a file in place or replace it with a different inode.
+            version = (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+            if info.st_size <= limit and valid_mission_file(file, limit, version):
+                return file
+        except OSError:
             continue
     return None
 
