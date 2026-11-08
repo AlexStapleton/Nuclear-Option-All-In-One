@@ -38,6 +38,20 @@ def build(items, workshop_ids, local, local_rotation, declarations, selected, en
     releases = server_mods.server_releases(entries)
     selected_assets = {asset.get("id", LOADER_ID): asset for asset in (selected or {}).get("assets", [])}
     selected_item = (selected or {}).get("item")
+    pins = (selected or {}).get("pins", {})
+    reverse = {}
+    selected_releases = {}
+    for key, asset in selected_assets.items():
+        if key == LOADER_ID:
+            continue
+        release = artifact_for(packages.get(key, {}), asset["version"])
+        selected_releases[key] = (asset, release)
+        try:
+            requirements = server_mods.dependency_requirements(key, release)
+        except ValueError:
+            continue
+        for target, minimum in requirements:
+            reverse.setdefault(target, []).append({"name": asset["name"], "version": asset["version"], "minimum": minimum})
     mods = {}
     coverage = []
     visited = set()
@@ -51,7 +65,9 @@ def build(items, workshop_ids, local, local_rotation, declarations, selected, en
         current = installed.get("version")
         return mods.setdefault(key, {"id": key, "name": name, "selected_version": installed.get("version"),
                                      "latest_version": version,
-                                     "update_available": bool(current and version and server_mods.version_key(current)
+                                     "pinned": key in pins, "required_by": reverse.get(key, []),
+                                     "versions": list(dict.fromkeys(asset["version"] for asset, _ in latest)) if current else [],
+                                     "update_available": bool(key not in pins and current and version and server_mods.version_key(current)
                                                               and server_mods.version_key(version) > server_mods.version_key(current)),
                                      "used_by": {}, "supports": set()})
 
@@ -145,6 +161,7 @@ def build(items, workshop_ids, local, local_rotation, declarations, selected, en
         entry["role"] = "Foundation" if entry["supports"] else "Shared" if len(uses) > 1 else "Mission specific"
     sorted_mods = sorted(mods.values(), key=lambda entry: (not entry["supports"], -len(entry["used_by"]), entry["name"].casefold()))
     return {"mods": sorted_mods, "missions": coverage, "local": local, "declarations": declarations,
-            "selected_title": (selected or {}).get("title"),
+            "selected_title": (selected or {}).get("title"), "selected_id": (selected or {}).get("id"),
+            "conflicts": list(dict.fromkeys(server_mods.catalog_conflicts(selected_releases))),
             "packages": sorted(({"id": key, "name": entry.get("displayName") or key} for key, entry in packages.items()),
                                key=lambda entry: entry["name"].casefold()), "catalog_available": catalog_available}

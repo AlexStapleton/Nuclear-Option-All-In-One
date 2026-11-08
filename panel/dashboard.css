@@ -120,7 +120,10 @@ footer { padding-block: 1.2rem 2rem; }
 .mod-list li + li { margin-top: .35rem; }
 .mod-list button { margin-left: .6rem; }
 .mod-coverage, #workshop-mod-plan { margin-top: .85rem; }
-#workshop-mod-plan > button { margin-top: .65rem; }
+.mod-plan-actions, .mod-version-options, .saved-mod-set { margin-top: .65rem; }
+.saved-mod-set { border-top: 1px solid var(--line); padding-top: .65rem; }
+.saved-mod-set summary, .mod-version-options summary { cursor: pointer; }
+.mod-version-options select { margin: .4rem 0; }
 .mission-fields { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
 .rotation-list { padding-left: 1.25rem; margin: 0; }
 .rotation-list li { border-top: 1px solid var(--line); padding: .75rem 0; }

@@ -84,6 +84,24 @@ def dependency_requirements(key, artifact):
     return requirements
 
 
+def incompatibilities(artifact):
+    entries = artifact.get("incompatibilities")
+    for entry in entries if isinstance(entries, list) else []:
+        if isinstance(entry, dict) and isinstance(entry.get("id"), str):
+            yield entry["id"].lower(), entry.get("version")
+
+
+def catalog_conflicts(chosen):
+    for key, (asset, artifact) in chosen.items():
+        for target, maximum in incompatibilities(artifact):
+            if target not in chosen or target == key:
+                continue
+            other = chosen[target][0]
+            if not version_key(maximum) or version_key(other["version"]) <= version_key(maximum):
+                limit = f" through v{maximum}" if version_key(maximum) else ""
+                yield f"The catalog marks {asset['name']} v{asset['version']} as incompatible with {other['name']}{limit} (set uses v{other['version']})."
+
+
 def identify_plan(plan):
     plan["id"] = hashlib.sha256(json.dumps(plan, sort_keys=True).encode()).hexdigest()[:32]
     return plan
@@ -122,6 +140,7 @@ def make_plan(identifier, overrides):
         direct.append(key)
 
     resolved = {}
+    chosen = {}
     visiting = set()
 
     def resolve(key, minimum=None):
@@ -149,6 +168,7 @@ def make_plan(identifier, overrides):
             for target, minimum in dependency_requirements(key, artifact):
                 resolve(target, minimum)
             resolved[key] = {**asset, "id": key, "parent": parent["id"].lower() if parent else None}
+            chosen[key] = (asset, artifact)
         finally:
             visiting.remove(key)
 
@@ -159,6 +179,7 @@ def make_plan(identifier, overrides):
             if str(error) not in problems:
                 problems.append(str(error))
 
+    problems.extend(dict.fromkeys(catalog_conflicts(chosen)))
     assets = [BEPINEX, *resolved.values()]
     plan = {"item": identifier, "title": details.get("title") or identifier, "choices": choices,
             "overrides": {choice["id"]: overrides[choice["id"]] for choice in choices if choice["id"] in overrides},
@@ -166,20 +187,26 @@ def make_plan(identifier, overrides):
     return identify_plan(plan)
 
 
-def update_plan(selected, package, version, catalog):
+def update_plan(selected, package, version, catalog, *, exact=False):
     """Preview one update and reconcile its dependencies across the whole server set."""
     releases = server_releases(catalog)
     current = {asset["id"]: asset for asset in selected["assets"] if "id" in asset}
     loader = next((asset for asset in selected["assets"] if "id" not in asset), BEPINEX)
     offered = releases.get(package, [])
-    if (package not in current or not offered or offered[0][0]["version"] != version
-            or version_key(version) <= version_key(current[package]["version"])):
+    pins = selected.get("pins", {})
+    target_release = next((release for release in offered if release[0]["version"] == version), None)
+    if package not in current or not target_release:
+        raise ValueError("That version is unavailable for this server set. Check the catalog again.")
+    if not exact and (package in pins or offered[0][0]["version"] != version
+                      or version_key(version) <= version_key(current[package]["version"])):
         raise ValueError("That update is no longer available for this server set. Check for updates again.")
+    if exact and version == current[package]["version"]:
+        raise ValueError("This version is already in the server set. Use Pin current version to keep it.")
 
     chosen = {}
     for key, asset in current.items():
         if key == package:
-            chosen[key] = offered[0]
+            chosen[key] = target_release
             continue
         match = next((release for release in releases.get(key, [])
                       if release[0]["version"] == asset["version"] and release[0]["hash"] == asset.get("hash")), None)
@@ -197,7 +224,9 @@ def update_plan(selected, package, version, catalog):
                 if previous and (not minimum or version_key(previous[0]["version"]) >= version_key(minimum)):
                     continue
                 if target == package:
-                    raise ValueError(f"{chosen[key][0]['name']} requires a newer version than the selected update.")
+                    raise ValueError(f"{chosen[key][0]['name']} requires {chosen[target][0]['name']} v{minimum} or newer. You chose v{version}.")
+                if target in pins:
+                    raise ValueError(f"{chosen[key][0]['name']} requires {chosen[target][0]['name']} v{minimum} or newer. This set pins v{pins[target]}.")
                 options = releases.get(target, [])
                 replacement = next((item for item in reversed(options)
                                     if version_key(item[0]["version"]) >= version_key(minimum)), None) if minimum else next(iter(options), None)
@@ -212,6 +241,10 @@ def update_plan(selected, package, version, catalog):
             break
     else:
         raise ValueError("The catalog dependencies could not be resolved into one mod set.")
+
+    conflict = next(catalog_conflicts(chosen), None)
+    if conflict:
+        raise ValueError(conflict)
 
     ordered = {}
     visiting = set()
@@ -238,8 +271,9 @@ def update_plan(selected, package, version, catalog):
             changes.append({"id": key, "name": asset["name"], "from": old, "to": asset["version"],
                             "requested": key == package, "game_version": asset["game_version"]})
     requirements = [{"name": ordered[target]["name"], "minimum": minimum, "version": ordered[target]["version"]}
-                    for target, minimum in dependency_requirements(package, offered[0][1])]
+                    for target, minimum in dependency_requirements(package, target_release[1])]
     return identify_plan({"item": selected["item"], "title": selected["title"], "base_id": selected["id"],
+                          "base_pins": pins, "pins": {**pins, **({package: version} if exact else {})},
                           "choices": [], "overrides": selected.get("overrides", {}), "problems": [],
                           "assets": [loader, *ordered.values()], "changes": changes, "requirements": requirements})
 
@@ -258,12 +292,67 @@ def selected_set(data_dir):
         return None
     with marker.open(encoding="ascii") as stream:
         key = stream.read(34).strip()
-    if not SET_ID.fullmatch(key):
+    return read_set(root, key)
+
+
+def read_set(root, key):
+    if not isinstance(key, str) or not SET_ID.fullmatch(key):
         return None
     manifest = root / key / "panel-plan.json"
     if manifest.resolve() != manifest or not manifest.is_file():
         return None
-    return json.loads(manifest.read_text(encoding="utf-8"))
+    with manifest.open("rb") as stream:
+        plan = json.loads(stream.read(512 * 1024))
+    if not isinstance(plan, dict) or plan.get("id") != key:
+        return None
+    pin_file = manifest.parent / "panel-pins.json"
+    if pin_file.is_file() and not pin_file.is_symlink():
+        override = workshop.read_metadata(pin_file).get("pins")
+        if isinstance(override, dict):
+            plan["pins"] = override
+    return plan
+
+
+def pin_version(data_dir, key, package, pinned):
+    selected = selected_set(data_dir)
+    if not selected or selected["id"] != key:
+        raise ValueError("The server mod set changed. Refresh Mod management and try again.")
+    asset = next((asset for asset in selected["assets"] if asset.get("id") == package), None)
+    if not asset:
+        raise ValueError("This package is absent from the server mod set.")
+    pins = dict(selected.get("pins", {}))
+    if pinned:
+        pins[package] = asset["version"]
+    else:
+        pins.pop(package, None)
+    workshop.write_metadata(mod_root(data_dir) / key / "panel-pins.json", {"pins": pins})
+
+
+def saved_sets(data_dir):
+    root = mod_root(data_dir)
+    if not root.is_dir():
+        return []
+    sets = []
+    for folder in root.iterdir():
+        try:
+            if folder.is_symlink() or not SET_ID.fullmatch(folder.name) or not loader_ready(folder):
+                continue
+            plan = read_set(root, folder.name)
+            if plan:
+                pins = plan.get("pins", {})
+                versions = [{"name": asset["name"], "version": asset["version"], "pinned": asset.get("id") in pins}
+                            for asset in plan["assets"]]
+                sets.append({"id": plan["id"], "title": plan["title"], "versions": versions})
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return sorted(sets, key=lambda item: (item["title"].casefold(), item["id"]))
+
+
+def activate_saved_set(data_dir, key):
+    root = mod_root(data_dir)
+    if not read_set(root, key) or not loader_ready(root / key):
+        raise ValueError("That saved mod set is unavailable.")
+    select_set(data_dir, key)
 
 
 def select_set(data_dir, key):
@@ -334,7 +423,7 @@ def loader_ready(profile):
     return (profile / "BepInEx/core/BepInEx.Preloader.dll").is_file() and (profile / "libdoorstop.so").is_file()
 
 
-def install_set(data_dir, plan, progress):
+def install_set(data_dir, plan, progress, *, activate=True):
     if plan["problems"] or not SET_ID.fullmatch(plan["id"]):
         raise ValueError("Review a complete install plan first.")
     root = mod_root(data_dir)
@@ -387,4 +476,5 @@ def install_set(data_dir, plan, progress):
             profile.rename(destination)
     if not loader_ready(destination):
         raise ValueError("The staged set is missing the Linux mod loader.")
-    select_set(data_dir, plan["id"])
+    if activate:
+        select_set(data_dir, plan["id"])

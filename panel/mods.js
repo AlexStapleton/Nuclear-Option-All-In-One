@@ -1,6 +1,7 @@
 const byId = id => document.getElementById(id);
 const reviewMods = byId('review-mods');
 const installMods = byId('install-mods');
+const saveModSet = byId('save-mod-set');
 const vanillaMods = byId('vanilla-mods');
 const modPlanBox = byId('workshop-mod-plan');
 const modStatus = byId('mod-install-status');
@@ -11,13 +12,14 @@ let modBusy = false;
 let modPoll;
 let inventory;
 let inventoryRequest = 0;
+let savedSetsSignature;
 const modPage = byId('mod-management');
 
 function resetModPlan() {
     modReviewRequest += 1;
     modPlanId = undefined;
     modPlanBox.hidden = true;
-    installMods.disabled = true;
+    installMods.disabled = saveModSet.disabled = true;
     reviewMods.disabled = false;
 }
 
@@ -33,13 +35,14 @@ async function modRequest(data) {
 async function updateModStatus() {
     clearTimeout(modPoll);
     try {
-        const {selected, running, message} = await modRequest();
+        const {selected, selected_id: selectedId, sets, running, message} = await modRequest();
         const completed = modBusy && !running;
         byId('selected-mods').textContent = selected ? `Server mod set: ${selected}` : 'No mods enabled by the panel.';
         vanillaMods.hidden = !selected;
         vanillaMods.disabled = running;
         modBusy = running;
-        installMods.disabled = running || !modPlanId;
+        installMods.disabled = saveModSet.disabled = running || !modPlanId;
+        showSavedSets(sets, selectedId, running);
         if (message) modStatus.textContent = message;
         if (running) modPoll = setTimeout(updateModStatus, 2500);
         if (completed) loadInventory();
@@ -54,20 +57,21 @@ async function reviewModPlan(overrides = {}, update = null) {
     if (!target && !update) return;
     const request = ++modReviewRequest;
     const problems = byId('workshop-mod-problems');
-    reviewMods.disabled = installMods.disabled = true;
+    reviewMods.disabled = installMods.disabled = saveModSet.disabled = true;
     modPlanId = undefined;
     modPlanBox.hidden = false;
     const heading = byId('mod-plan-heading');
-    heading.textContent = update ? `Review update for ${update.name}` : 'Review install';
+    heading.textContent = update ? `Review ${update.exact ? 'version change' : 'update'} for ${update.name}` : 'Review install';
     if (update) heading.focus();
-    installMods.textContent = update ? 'Apply update and restart' : 'Install and restart server';
+    installMods.textContent = update ? (update.exact ? 'Apply version and restart' : 'Apply update and restart') : 'Install and restart server';
     problems.textContent = update ? 'Checking the new release and its dependencies…' : 'Building the install plan…';
     byId('workshop-mod-assets').replaceChildren();
     byId('workshop-mod-choices').replaceChildren();
     const requirements = byId('mod-plan-requirements');
     requirements.hidden = true;
     try {
-        const plan = await modRequest(update ? {action: 'preview_update', package: update.id, version: update.latest_version}
+        const plan = await modRequest(update ? {action: update.exact ? 'preview_version' : 'preview_update', package: update.id,
+            version: update.exact ? update.version : update.latest_version}
             : {action: 'preview', item: target, overrides});
         if (request !== modReviewRequest) return;
         problems.textContent = plan.problems.join(' ');
@@ -103,9 +107,10 @@ async function reviewModPlan(overrides = {}, update = null) {
                 }
                 byId('workshop-mod-assets').append(row);
             }
-            requirements.textContent = plan.requirements.length
+            const info = plan.requirements.length
                 ? `This release requires ${plan.requirements.map(dep => `${dep.name}${dep.minimum ? ` v${dep.minimum} or newer` : ''} (plan uses v${dep.version})`).join(', ')}.`
                 : 'The catalog lists no package dependencies for this release.';
+            requirements.textContent = update.exact ? `${info} This version will be pinned in the new set.` : info;
             requirements.hidden = false;
         }
         for (const asset of update ? [] : plan.assets) {
@@ -114,7 +119,7 @@ async function reviewModPlan(overrides = {}, update = null) {
             byId('workshop-mod-assets').append(row);
         }
         if (!plan.problems.length) modPlanId = plan.id;
-        installMods.disabled = modBusy || !modPlanId;
+        installMods.disabled = saveModSet.disabled = modBusy || !modPlanId;
     } catch (error) {
         if (request === modReviewRequest) problems.textContent = error.message || 'Could not build the install plan.';
     } finally {
@@ -122,14 +127,17 @@ async function reviewModPlan(overrides = {}, update = null) {
     }
 }
 
-async function changeModSet(action) {
-    installMods.disabled = vanillaMods.disabled = true;
+async function changeModSet(action, data = {}) {
+    installMods.disabled = saveModSet.disabled = vanillaMods.disabled = true;
     try {
-        const result = await modRequest({action, plan: modPlanId});
+        const result = await modRequest({action, plan: modPlanId, ...data});
         modStatus.textContent = result.message;
-        if (action === 'install') modBusy = true;
-        if (action === 'vanilla') loadInventory();
-        byId('server-mods').scrollIntoView({block: 'nearest'});
+        if (action === 'install' || action === 'save_set') modBusy = true;
+        if (['vanilla', 'activate', 'pin'].includes(action)) {
+            resetModPlan();
+            loadInventory();
+        }
+        if (action !== 'pin') byId('server-mods').scrollIntoView({block: 'nearest'});
     } catch (error) {
         modStatus.textContent = error.message || 'Could not change the mod set.';
     }
@@ -142,8 +150,45 @@ byId('mod-review-form').addEventListener('submit', event => {
 });
 byId('mod-item').addEventListener('input', resetModPlan);
 installMods.addEventListener('click', () => changeModSet('install'));
+saveModSet.addEventListener('click', () => changeModSet('save_set'));
 vanillaMods.addEventListener('click', () => changeModSet('vanilla'));
 updateModStatus();
+
+function showSavedSets(sets, selectedId, running) {
+    const signature = JSON.stringify([sets, selectedId, running]);
+    if (signature === savedSetsSignature) return;
+    savedSetsSignature = signature;
+    const current = sets.find(set => set.id === selectedId);
+    const currentVersions = new Map((current?.versions || []).map(mod => [mod.name, mod.version]));
+    const rows = sets.map(set => {
+        const details = document.createElement('details');
+        details.className = 'saved-mod-set';
+        const summary = document.createElement('summary');
+        const differences = set.versions.filter(mod => currentVersions.get(mod.name) !== mod.version);
+        summary.textContent = set.id === selectedId ? `${set.title} · Selected`
+            : `${set.title} · ${differences.length ? differences.slice(0, 2).map(mod => `${mod.name} v${mod.version}`).join(', ') : 'Saved version set'}`;
+        details.append(summary);
+        const list = document.createElement('ul');
+        list.className = 'mod-list';
+        for (const mod of set.versions) {
+            const item = document.createElement('li');
+            item.textContent = `${mod.name} v${mod.version}${mod.pinned ? ' · Pinned' : ''}`;
+            list.append(item);
+        }
+        details.append(list);
+        if (set.id !== selectedId) {
+            const activate = document.createElement('button');
+            activate.type = 'button';
+            activate.textContent = 'Use this set and restart';
+            activate.disabled = running;
+            activate.addEventListener('click', () => changeModSet('activate', {set: set.id}));
+            details.append(activate);
+        }
+        return details;
+    });
+    byId('saved-sets').replaceChildren(...rows);
+    byId('saved-sets-empty').hidden = Boolean(rows.length);
+}
 
 function renderInventory() {
     if (!inventory) return;
@@ -167,7 +212,8 @@ function renderInventory() {
         versions.append(selected);
         const latest = document.createElement('span');
         latest.className = 'meta';
-        latest.textContent = mod.id === 'panel-bepinex' ? 'Loader version managed by the panel'
+        latest.textContent = mod.pinned ? `Pinned to v${mod.selected_version} for this set`
+            : mod.id === 'panel-bepinex' ? 'Loader version managed by the panel'
             : mod.update_available ? `Update available · v${mod.latest_version}`
                 : mod.latest_version ? `Latest supported release · v${mod.latest_version}` : 'Catalog version unavailable';
         versions.append(latest);
@@ -179,6 +225,34 @@ function renderInventory() {
             review.setAttribute('aria-label', `Review update for ${mod.name}`);
             review.addEventListener('click', () => reviewModPlan({}, mod));
             versions.append(review);
+        }
+        if (mod.selected_version && mod.id !== 'panel-bepinex') {
+            const options = document.createElement('details');
+            options.className = 'mod-version-options';
+            const summary = document.createElement('summary');
+            summary.textContent = 'Version options';
+            options.append(summary);
+            const pin = document.createElement('button');
+            pin.type = 'button';
+            pin.className = 'mod-review-update';
+            pin.textContent = mod.pinned ? 'Remove pin' : 'Pin current version';
+            pin.addEventListener('click', () => changeModSet('pin', {set: inventory.selected_id, package: mod.id, pinned: !mod.pinned}));
+            options.append(pin);
+            const versionsAvailable = mod.versions.filter(version => version !== mod.selected_version);
+            if (versionsAvailable.length) {
+                const select = document.createElement('select');
+                select.setAttribute('aria-label', `Alternate version of ${mod.name}`);
+                select.append(new Option('Choose another version', ''), ...versionsAvailable.map(version => new Option(`v${version}`, version)));
+                const reviewVersion = document.createElement('button');
+                reviewVersion.type = 'button';
+                reviewVersion.className = 'mod-review-update';
+                reviewVersion.textContent = 'Review this version';
+                reviewVersion.disabled = true;
+                select.addEventListener('change', () => { reviewVersion.disabled = !select.value; });
+                reviewVersion.addEventListener('click', () => reviewModPlan({}, {...mod, version: select.value, exact: true}));
+                options.append(select, reviewVersion);
+            }
+            versions.append(options);
         }
         const usage = row.insertCell();
         const missionCount = mod.used_by.length;
@@ -202,6 +276,16 @@ function renderInventory() {
             list.append(item);
         }
         details.append(list);
+        if (mod.required_by.length) {
+            const minimums = document.createElement('ul');
+            minimums.className = 'mod-list meta';
+            for (const dependency of mod.required_by) {
+                const item = document.createElement('li');
+                item.textContent = `${dependency.name} v${dependency.version} requires ${dependency.minimum ? `v${dependency.minimum} or newer` : 'this package'}`;
+                minimums.append(item);
+            }
+            details.append(minimums);
+        }
         if (mod.supports.length) {
             const supports = document.createElement('p');
             supports.className = 'meta';
@@ -259,6 +343,13 @@ async function loadInventory(checkUpdates = false) {
         if (sequence !== inventoryRequest) return;
         if (!response.ok) throw new Error(result.message);
         inventory = result;
+        const conflicts = byId('compatibility-conflicts');
+        conflicts.replaceChildren(...result.conflicts.map(message => {
+            const item = document.createElement('li');
+            item.textContent = message;
+            return item;
+        }));
+        conflicts.hidden = !result.conflicts.length;
         if (checkUpdates) checkStatus.textContent = result.catalog_available
             ? `Last checked at ${new Date().toLocaleTimeString()}.` : 'Update check failed. Try again when the catalog is available.';
         renderInventory();

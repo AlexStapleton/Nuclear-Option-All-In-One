@@ -339,7 +339,8 @@ def mod_status():
     try:
         with MOD_LOCK:
             selected = server_mods.selected_set(DATA_DIR)
-            return jsonify(selected=selected["title"] if selected else None, **mod_job)
+            return jsonify(selected=selected["title"] if selected else None,
+                           selected_id=selected["id"] if selected else None, sets=server_mods.saved_sets(DATA_DIR), **mod_job)
     except (OSError, ValueError, KeyError):
         return jsonify(message="Could not read the selected mod set."), 503
 
@@ -413,15 +414,19 @@ def record_local_mod():
     return jsonify(message="Saved the local scenario's requirements.")
 
 
-def install_mod_set(plan):
+def install_mod_set(plan, activate=True):
     def progress(message):
         with MOD_LOCK:
             mod_job["message"] = message
 
     message = "Install stopped unexpectedly."
     try:
-        server_mods.install_set(DATA_DIR, plan, progress)
-        message = "Mod set installed. The server is switching to it. Check Server logs before queueing the mission."
+        if activate:
+            server_mods.install_set(DATA_DIR, plan, progress)
+            message = "Mod set installed. The server is switching to it. Check Server logs before queueing the mission."
+        else:
+            server_mods.install_set(DATA_DIR, plan, progress, activate=False)
+            message = "Mod set saved. Select it under Saved mod sets when you are ready to switch."
     except ValueError as error:
         message = f"Install stopped. {error}"
     except (OSError, RuntimeError, BadZipFile) as error:
@@ -439,9 +444,9 @@ def manage_mods():
     if not isinstance(data, dict):
         return jsonify(message="Choose a mod action."), 400
     action = data.get("action")
-    if action in ("preview", "preview_update"):
+    if action in ("preview", "preview_update", "preview_version"):
         try:
-            if action == "preview_update":
+            if action != "preview":
                 package, version = data.get("package"), data.get("version")
                 if not isinstance(package, str) or not server_mods.PACKAGE_ID.fullmatch(package) or not server_mods.version_key(version):
                     raise ValueError("Choose a valid mod update.")
@@ -451,7 +456,7 @@ def manage_mods():
                 entries, available = mod_inventory.catalog()
                 if not available:
                     return jsonify(message="Could not read the mod catalog. Try again."), 503
-                plan = server_mods.update_plan(selected, package, version, entries)
+                plan = server_mods.update_plan(selected, package, version, entries, exact=action == "preview_version")
             else:
                 identifier = workshop.item_id(data["item"].strip())
                 overrides = data.get("overrides", {})
@@ -475,6 +480,25 @@ def manage_mods():
     with MOD_LOCK:
         if mod_job["running"]:
             return jsonify(message="A mod set is already installing."), 409
+        if action in ("activate", "pin"):
+            try:
+                key = data.get("set")
+                if action == "pin":
+                    package, pinned = data.get("package"), data.get("pinned")
+                    if not isinstance(package, str) or type(pinned) is not bool:
+                        raise ValueError("Choose a package and pin state.")
+                    server_mods.pin_version(DATA_DIR, key, package, pinned)
+                    message = "Version pinned for this set." if pinned else "Version pin removed."
+                else:
+                    current = server_mods.selected_set(DATA_DIR)
+                    if current and key == current["id"]:
+                        return jsonify(message="This mod set is already selected.")
+                    server_mods.activate_saved_set(DATA_DIR, key)
+                    message = "Saved mod set selected. Check Server logs for the restart."
+            except (ValueError, OSError, KeyError) as error:
+                return jsonify(message=str(error) if isinstance(error, ValueError) else "Could not change the saved mod set."), 409
+            mod_job["message"] = message
+            return jsonify(message=message)
         if action == "vanilla":
             try:
                 server_mods.select_set(DATA_DIR, "vanilla")
@@ -482,17 +506,18 @@ def manage_mods():
                 return jsonify(message="Could not select vanilla mode. Check the server data folder."), 503
             mod_job["message"] = "Vanilla mode selected. Check Server logs for the restart."
             return jsonify(message=mod_job["message"])
-        if action == "install" and mod_plan and data.get("plan") == mod_plan["id"] and not mod_plan["problems"]:
+        if action in ("install", "save_set") and mod_plan and data.get("plan") == mod_plan["id"] and not mod_plan["problems"]:
             try:
                 selected = server_mods.selected_set(DATA_DIR)
             except (OSError, ValueError):
                 return jsonify(message="Could not read the selected mod set."), 503
             if selected and selected.get("id") == mod_plan["id"]:
                 return jsonify(message="This mod set is already selected. Check Server logs for its startup.")
-            if mod_plan.get("base_id") and (not selected or selected.get("id") != mod_plan["base_id"]):
+            if mod_plan.get("base_id") and (not selected or selected.get("id") != mod_plan["base_id"]
+                                           or selected.get("pins", {}) != mod_plan.get("base_pins", {})):
                 return jsonify(message="The server mod set changed. Check for updates and review the new plan."), 409
             mod_job.update(running=True, message="Preparing the mod set…")
-            Thread(target=install_mod_set, args=(mod_plan,), daemon=True).start()
+            Thread(target=install_mod_set, args=(mod_plan, action == "install"), daemon=True).start()
             return jsonify(message=mod_job["message"]), 202
     return jsonify(message="Review a complete, current mod plan before installing."), 409
 
