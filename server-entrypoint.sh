@@ -48,5 +48,56 @@ steamcmd +@ShutdownOnFailedCommand 1 +force_install_dir /server +login anonymous
 }
 chmod +x ./NuclearOptionServer.x86_64
 export LD_LIBRARY_PATH=/server/linux64
-printf '%s\n' '[Nuclear Option] Starting the game server…'
-exec ./NuclearOptionServer.x86_64 -logFile - -limitframerate 60 -DedicatedServer /server/DedicatedServerConfig.json -ServerRemoteCommands 7779
+
+selected_mod_set() {
+    local key
+    if [[ -f .panel-mods/selected && ! -L .panel-mods/selected ]] &&
+        IFS= read -r key < .panel-mods/selected && [[ $key =~ ^[a-f0-9]{32}$ ]]; then
+        printf '%s' "$key"
+    fi
+}
+
+stop_game() {
+    kill -INT "$game_pid" 2>/dev/null || return 0
+    for ((second=0; second<20; second++)); do
+        kill -0 "$game_pid" 2>/dev/null || break
+        sleep 1
+    done
+    kill -KILL "$game_pid" 2>/dev/null || :
+    wait "$game_pid" || :
+}
+
+# Job control preserves SIGINT for the asynchronous game process. The panel can
+# select a staged set through the shared data mount without access to Docker.
+set -m
+game_pid=
+trap 'if [[ -n $game_pid ]]; then stop_game; fi; exit 0' INT TERM
+args=(-logFile - -limitframerate 60 -DedicatedServer /server/DedicatedServerConfig.json -ServerRemoteCommands 7779)
+while :; do
+    selected=$(selected_mod_set)
+    profile=/server/.panel-mods/$selected
+    if [[ -n $selected && ! -L .panel-mods && ! -L $profile && -f $profile/libdoorstop.so &&
+          -f $profile/BepInEx/core/BepInEx.Preloader.dll ]]; then
+        printf '[Nuclear Option] Starting with mod set %s.\n' "$selected"
+        DOORSTOP_ENABLED=1 DOORSTOP_TARGET_ASSEMBLY="$profile/BepInEx/core/BepInEx.Preloader.dll" \
+            LD_PRELOAD="$profile/libdoorstop.so" ./NuclearOptionServer.x86_64 "${args[@]}" &
+    else
+        printf '%s\n' '[Nuclear Option] Starting the game server…'
+        ./NuclearOptionServer.x86_64 "${args[@]}" &
+    fi
+    game_pid=$!
+    restart_requested=false
+    while kill -0 "$game_pid" 2>/dev/null; do
+        if [[ $(selected_mod_set) != "$selected" ]]; then
+            printf '%s\n' '[Nuclear Option] Restarting to apply the selected mod set…'
+            stop_game
+            restart_requested=true
+            break
+        fi
+        sleep 2
+    done
+    if ! "$restart_requested" && [[ $(selected_mod_set) == "$selected" ]]; then
+        wait "$game_pid"
+        exit $?
+    fi
+done

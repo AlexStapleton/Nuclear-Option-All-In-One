@@ -9,7 +9,7 @@ RUN tar -xzf /tmp/panel.tar.gz -C /tmp \
 
 WORKDIR /app
 COPY config.py /app/config.py
-COPY manage.py mission_import.py panel_auth.py server_options.py workshop.py /app/
+COPY manage.py mission_import.py panel_auth.py server_options.py server_mods.py workshop.py /app/
 COPY settings.html /app/templates/settings.html
 COPY dashboard.html logs.html moderation.html /app/templates/
 COPY navigation.html login.html session-head.html /app/templates/

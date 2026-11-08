@@ -30,6 +30,17 @@ const workshopStatusText = byId('workshop-status');
 const workshopDetailsText = byId('workshop-details');
 const workshopCheckButton = byId('check-workshop');
 const workshopMods = byId('workshop-mods');
+const reviewMods = byId('review-mods');
+const installMods = byId('install-mods');
+const vanillaMods = byId('vanilla-mods');
+const modPlanBox = byId('workshop-mod-plan');
+const modStatus = byId('mod-install-status');
+const modUrl = byId('server-mods').dataset.url;
+let modPlanId;
+let modItem;
+let modReviewRequest = 0;
+let modBusy = false;
+let modPoll;
 let workshopTimer;
 let workshopRequest = 0;
 let inspectedItem = '';
@@ -48,6 +59,8 @@ function showWorkshopMods(id, mods, customMap) {
     if (!mods?.required) return;
 
     const {requirements, catalog_unavailable: unavailable} = mods;
+    modItem = id;
+    reviewMods.hidden = !requirements.length || unavailable;
     byId('workshop-source').href = `https://steamcommunity.com/sharedfiles/filedetails/?id=${encodeURIComponent(id)}`;
     const status = unavailable ? 'The NOMM catalog is unavailable. Try again to look up the listed mods.'
         : requirements.length ? 'Requirements listed by the mission author. Release links come from NOMM’s catalog. The panel does not check what’s installed.'
@@ -80,6 +93,105 @@ function showWorkshopMods(id, mods, customMap) {
     list.hidden = !requirements.length;
 }
 
+function resetModPlan() {
+    modReviewRequest += 1;
+    modPlanId = undefined;
+    modItem = undefined;
+    modPlanBox.hidden = true;
+    installMods.disabled = true;
+    reviewMods.disabled = false;
+}
+
+async function modRequest(data) {
+    const response = await panelFetch(modUrl, data ? {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data),
+    } : {cache: 'no-store'});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message);
+    return result;
+}
+
+async function updateModStatus() {
+    clearTimeout(modPoll);
+    try {
+        const {selected, running, message} = await modRequest();
+        byId('selected-mods').textContent = selected ? `Selected mod set: ${selected}` : 'No panel mod set selected.';
+        vanillaMods.hidden = !selected;
+        vanillaMods.disabled = running;
+        modBusy = running;
+        installMods.disabled = running || !modPlanId;
+        if (message) modStatus.textContent = message;
+        if (running) modPoll = setTimeout(updateModStatus, 2500);
+    } catch (error) {
+        byId('selected-mods').textContent = error.message || 'Could not check the selected mod set.';
+        if (modBusy) modPoll = setTimeout(updateModStatus, 5000);
+    }
+}
+
+async function reviewModPlan(overrides = {}) {
+    if (!modItem) return;
+    const request = ++modReviewRequest;
+    const target = modItem;
+    const problems = byId('workshop-mod-problems');
+    reviewMods.disabled = installMods.disabled = true;
+    modPlanId = undefined;
+    modPlanBox.hidden = false;
+    problems.textContent = 'Building the install plan…';
+    byId('workshop-mod-assets').replaceChildren();
+    byId('workshop-mod-choices').replaceChildren();
+    try {
+        const plan = await modRequest({action: 'preview', item: target, overrides});
+        if (request !== modReviewRequest) return;
+        problems.textContent = plan.problems.join(' ');
+        for (const choice of plan.choices) {
+            const label = document.createElement('label');
+            label.className = 'field';
+            label.textContent = `${choice.name} replacement for v${choice.requested}`;
+            const select = document.createElement('select');
+            select.append(new Option('Choose a version', ''));
+            for (const version of choice.versions) select.append(new Option(version, version));
+            select.value = plan.overrides[choice.id] || '';
+            select.addEventListener('change', () => {
+                const next = {...plan.overrides};
+                if (select.value) next[choice.id] = select.value;
+                else delete next[choice.id];
+                reviewModPlan(next);
+            });
+            label.append(select);
+            byId('workshop-mod-choices').append(label);
+        }
+        for (const asset of plan.assets) {
+            const row = document.createElement('li');
+            row.textContent = `${asset.name} v${asset.version}${asset.game_version ? ` · Catalog game version ${asset.game_version}` : ''}`;
+            byId('workshop-mod-assets').append(row);
+        }
+        if (!plan.problems.length) modPlanId = plan.id;
+        installMods.disabled = modBusy || !modPlanId;
+    } catch (error) {
+        if (request === modReviewRequest) problems.textContent = error.message || 'Could not build the install plan.';
+    } finally {
+        if (request === modReviewRequest) reviewMods.disabled = false;
+    }
+}
+
+async function changeModSet(action) {
+    installMods.disabled = vanillaMods.disabled = true;
+    try {
+        const result = await modRequest({action, plan: modPlanId});
+        modStatus.textContent = result.message;
+        if (action === 'install') modBusy = true;
+        byId('server-mods').scrollIntoView({block: 'nearest'});
+    } catch (error) {
+        modStatus.textContent = error.message || 'Could not change the mod set.';
+    }
+    updateModStatus();
+}
+
+reviewMods.addEventListener('click', () => reviewModPlan());
+installMods.addEventListener('click', () => changeModSet('install'));
+vanillaMods.addEventListener('click', () => changeModSet('vanilla'));
+updateModStatus();
+
 async function refreshWorkshop(lookup = false) {
     clearTimeout(workshopTimer);
     const request = ++workshopRequest;
@@ -92,6 +204,7 @@ async function refreshWorkshop(lookup = false) {
         incompatibleItem = '';
         workshopDetailsText.textContent = '';
         workshopMods.hidden = true;
+        resetModPlan();
     }
     workshopCheckButton.disabled = !value || lookup;
     if (!selected || !value) {
@@ -99,6 +212,7 @@ async function refreshWorkshop(lookup = false) {
         return;
     }
     if (lookup) {
+        resetModPlan();
         workshopMods.hidden = true;
         workshopDetailsText.textContent = 'Checking Steam and the mod catalog…';
     }
@@ -158,7 +272,10 @@ function workshopInputChanged() {
     }
     clearTimeout(workshopTimer);
     workshopRequest += 1;
-    if (byId('mission-name').value.trim() !== inspectedItem) workshopMods.hidden = true;
+    if (byId('mission-name').value.trim() !== inspectedItem) {
+        workshopMods.hidden = true;
+        resetModPlan();
+    }
     if (isWorkshopLink(byId('mission-name').value.trim())) byId('group').value = 'Workshop';
     workshopControls.hidden = byId('group').value !== 'Workshop';
     workshopTimer = setTimeout(refreshWorkshop, 250);

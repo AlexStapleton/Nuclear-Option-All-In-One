@@ -7,7 +7,8 @@ import os
 import stat
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from threading import Lock
+from threading import Lock, Thread
+from zipfile import BadZipFile
 
 from flask import abort, jsonify, render_template, request
 from werkzeug.exceptions import RequestEntityTooLarge
@@ -16,6 +17,7 @@ import config
 import mission_import
 import panel_auth
 import server_commands
+import server_mods
 import server_options
 import workshop
 from app import app, create_remote_commander
@@ -25,6 +27,9 @@ CONFIG_PATH = DATA_DIR / "DedicatedServerConfig.json"
 STOCK_MISSIONS = ("Altercation", "Confrontation", "Domination", "Escalation", "Terminal Control")
 MISSION_GROUPS = ("BuiltIn", "User", "Workshop", "Default", "Tutorial")
 CONFIG_LOCK = Lock()
+MOD_LOCK = Lock()
+mod_plan = None
+mod_job = {"running": False, "message": ""}
 LOG_TAIL_BYTES = 64 * 1024
 ACTIVE_PORTS = (int(os.environ.get("NO_GAME_PORT", 7777)), int(os.environ.get("NO_QUERY_PORT", 7778)))
 
@@ -292,6 +297,85 @@ def add_workshop():
     prefix = "Saved to the mission rotation." if added else "Already saved in the mission rotation."
     return jsonify(mission=mission, revision=revision, workshop_items=configured_workshop_items(settings),
                    state=state, message=f"{prefix} {message}")
+
+
+@app.get("/settings/workshop/mods")
+def mod_status():
+    try:
+        with MOD_LOCK:
+            selected = server_mods.selected_set(DATA_DIR)
+            return jsonify(selected=selected["title"] if selected else None, **mod_job)
+    except (OSError, ValueError, KeyError):
+        return jsonify(message="Could not read the selected mod set."), 503
+
+
+def install_mod_set(plan):
+    def progress(message):
+        with MOD_LOCK:
+            mod_job["message"] = message
+
+    message = "Install stopped unexpectedly."
+    try:
+        server_mods.install_set(DATA_DIR, plan, progress)
+        message = "Mod set installed. The server is switching to it. Check Server logs before queueing the mission."
+    except ValueError as error:
+        message = f"Install stopped. {error}"
+    except (OSError, RuntimeError, BadZipFile) as error:
+        app.logger.warning("Could not install a Workshop mod set: %s", type(error).__name__)
+        message = "Install stopped. Check release availability, free disk space, and server data folder permissions, then retry."
+    finally:
+        with MOD_LOCK:
+            mod_job.update(running=False, message=message)
+
+
+@app.post("/settings/workshop/mods")
+def manage_mods():
+    global mod_plan
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(message="Choose a mod action."), 400
+    action = data.get("action")
+    if action == "preview":
+        try:
+            identifier = workshop.item_id(data["item"].strip())
+            overrides = data.get("overrides", {})
+            if not isinstance(overrides, dict) or len(overrides) > 24:
+                raise ValueError("Choose valid replacement versions.")
+            if any(not server_mods.PACKAGE_ID.fullmatch(key) or not server_mods.version_key(value)
+                   for key, value in overrides.items()):
+                raise ValueError("Choose valid replacement versions.")
+            plan = server_mods.make_plan(identifier, overrides)
+        except (ValueError, KeyError, AttributeError) as error:
+            return jsonify(message=str(error) if isinstance(error, ValueError) else "Choose a Workshop mission."), 400
+        except OSError:
+            return jsonify(message="Could not read the mod catalog. Try again."), 503
+        with MOD_LOCK:
+            mod_plan = plan
+        assets = [{key: asset.get(key) for key in ("name", "version", "game_version")} for asset in plan["assets"]]
+        return jsonify(id=plan["id"], assets=assets, choices=plan["choices"],
+                       problems=plan["problems"], overrides=plan["overrides"])
+
+    with MOD_LOCK:
+        if mod_job["running"]:
+            return jsonify(message="A mod set is already installing."), 409
+        if action == "vanilla":
+            try:
+                server_mods.select_set(DATA_DIR, "vanilla")
+            except (OSError, ValueError):
+                return jsonify(message="Could not select vanilla mode. Check the server data folder."), 503
+            mod_job["message"] = "Vanilla mode selected. Check Server logs for the restart."
+            return jsonify(message=mod_job["message"])
+        if action == "install" and mod_plan and data.get("plan") == mod_plan["id"] and not mod_plan["problems"]:
+            try:
+                selected = server_mods.selected_set(DATA_DIR)
+            except (OSError, ValueError):
+                return jsonify(message="Could not read the selected mod set."), 503
+            if selected and selected.get("id") == mod_plan["id"]:
+                return jsonify(message="This mod set is already selected. Check Server logs for its startup.")
+            mod_job.update(running=True, message="Preparing the mod set…")
+            Thread(target=install_mod_set, args=(mod_plan,), daemon=True).start()
+            return jsonify(message=mod_job["message"]), 202
+    return jsonify(message="Review a complete, current mod plan before installing."), 409
 
 
 @app.post("/settings/import")

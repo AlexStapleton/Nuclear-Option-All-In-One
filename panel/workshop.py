@@ -120,7 +120,7 @@ def find_mod_requirements(tags, description):
                     and re.fullmatch(r"[1-9]\d*\.\d+", version)):
                 # The Swiss Alps author publishes the 4.1-style shorthand as 0.4.1.
                 link, matched_version, game_version = package_link(package, "0." + version)
-            entry.update(package=package.get("displayName") or package_id, url=link,
+            entry.update(package=package.get("displayName") or package_id, package_id=package_id, url=link,
                          matched_version=matched_version, game_version=game_version)
         requirements.append(entry)
     return {"required": True, "requirements": requirements, "catalog_unavailable": unavailable}
