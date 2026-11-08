@@ -5,6 +5,7 @@ Run the official Nuclear Option dedicated server on an x86-64 Linux host and man
 - **One-command start.** The launcher creates the initial server configuration, generates a panel password, and starts both containers. SteamCMD checks for game updates when the server container starts.
 - **Browser administration.** See live mission and player information, send announcements, rename the server, and manage its rotation. Select stock missions and local scenarios or add Steam Workshop links. The advanced console includes moderation and raw command responses.
 - **LAN admin access.** Open `http://LINUX_LAN_IP:5000` from your browser. The game's remote-command port stays inside the stack.
+- **Live server logs.** Check Steam updates, game startup, and mission-loading messages under **Server logs**.
 - **Configurable storage.** Game files, settings, and custom missions live in `./server` by default. Set `SERVER_DATA_DIR` in `.env` to choose another host folder.
 
 ## Quick start

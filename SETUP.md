@@ -58,6 +58,8 @@ Follow the [README's port and router setup](README.md#ports-and-router-setup) fo
 
 ## Day-to-day operation
 
+Open **Server logs** in the panel for recent SteamCMD and game output. It refreshes every three seconds while the tab is visible. Use **Pause updates** to hold the current view or **Jump to latest** to scroll to the end. The Linux host keeps the current and previous log under `SERVER_DATA_DIR/.panel-logs/`, up to 1 MiB each. `docker compose logs nuclear-option` still shows the game container's output.
+
 Run these commands from the project folder on Linux.
 
 | Task | Command |

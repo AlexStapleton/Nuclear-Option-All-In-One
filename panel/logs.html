@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Server logs · Nuclear Option</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+    <script defer src="{{ url_for('static', filename='logs.js') }}"></script>
+</head>
+<body>
+    {% include 'navigation.html' %}
+    <main class="shell page">
+        <section class="hero">
+            <div>
+                <p class="eyebrow">Server administration</p>
+                <h1>Server logs</h1>
+                <p class="meta">Review Steam updates, game startup, and recent server messages.</p>
+            </div>
+        </section>
+        <section class="card">
+            <h2>Recent output</h2>
+            <div class="actions">
+                <button id="log-refresh" type="button">Refresh now</button>
+                <button id="log-pause" type="button" aria-pressed="false">Pause updates</button>
+                <button id="log-latest" type="button">Jump to latest</button>
+            </div>
+            <p id="log-status" class="meta" role="status">Loading server output…</p>
+            <pre id="server-log" data-url="{{ url_for('log_tail') }}" tabindex="0" aria-label="Recent server output"></pre>
+        </section>
+    </main>
+</body>
+</html>

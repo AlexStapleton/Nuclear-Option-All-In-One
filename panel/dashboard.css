@@ -99,6 +99,8 @@ footer { padding-block: 1.2rem 2rem; }
 .command-info { color: var(--muted); font-size: .85rem; }
 .command-name { color: var(--accent); margin-right: .5rem; }
 #response-area { background: #0d1721; border: 1px solid var(--line); border-radius: .5rem; min-height: 6rem; max-height: 45vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: .8rem; margin-bottom: 0; }
+#log-status { margin-top: .75rem; }
+#server-log { background: #0d1721; border: 1px solid var(--line); border-radius: .5rem; min-height: 12rem; max-height: 60vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: .8rem; margin-bottom: 0; }
 
 @media (prefers-reduced-motion: no-preference) {
     .response-pulse { animation: response-flash .5s ease-out; }

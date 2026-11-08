@@ -22,6 +22,7 @@ CONFIG_PATH = DATA_DIR / "DedicatedServerConfig.json"
 STOCK_MISSIONS = ("Altercation", "Confrontation", "Domination", "Escalation", "Terminal Control")
 MISSION_GROUPS = ("BuiltIn", "User", "Workshop", "Default", "Tutorial")
 CONFIG_LOCK = Lock()
+LOG_TAIL_BYTES = 64 * 1024
 
 
 def read_config():
@@ -45,6 +46,42 @@ def dashboard_page():
 # Keep the upstream command page and all of its API endpoints available.
 app.add_url_rule("/commands", view_func=command_console, endpoint="command_console")
 app.view_functions["index"] = dashboard_page
+
+
+@app.get("/logs")
+@requires_auth
+def logs_page():
+    return render_template("logs.html")
+
+
+@app.get("/logs/tail")
+@requires_auth
+def log_tail():
+    log_dir = DATA_DIR / ".panel-logs"
+    chunks = []
+    remaining = LOG_TAIL_BYTES
+    for name in ("server.log", "server.log.1"):
+        try:
+            with (log_dir / name).open("rb") as stream:
+                end = stream.seek(0, os.SEEK_END)
+                size = min(end, remaining)
+                stream.seek(end - size)
+                chunks.append(stream.read(size))
+        except FileNotFoundError:
+            continue
+        except OSError:
+            abort(503, "The server log could not be read.")
+        remaining -= size
+        if not remaining:
+            break
+    raw = b"".join(reversed(chunks))
+    if not remaining:
+        newline = raw.find(b"\n")
+        if newline >= 0:
+            raw = raw[newline + 1:]
+    response = jsonify(text=raw.decode("utf-8", errors="replace"), available=bool(chunks))
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 def local_missions(settings):

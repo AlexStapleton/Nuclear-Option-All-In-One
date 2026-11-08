@@ -26,13 +26,13 @@ services:
         target: /server
         bind:
           create_host_path: false
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - |
-        steamcmd +@ShutdownOnFailedCommand 1 +force_install_dir /server +login anonymous +app_update 3930080 +quit
-        chmod +x ./NuclearOptionServer.x86_64
-        export LD_LIBRARY_PATH=/server/linux64
-        exec ./NuclearOptionServer.x86_64 -logFile - -limitframerate 60 -DedicatedServer /server/DedicatedServerConfig.json -ServerRemoteCommands 7779
+      - type: bind
+        source: ./server-entrypoint.sh
+        target: /usr/local/bin/nuclear-option-start
+        read_only: true
+        bind:
+          create_host_path: false
+    entrypoint: ["/bin/bash", "/usr/local/bin/nuclear-option-start"]
 
   panel:
     build:
