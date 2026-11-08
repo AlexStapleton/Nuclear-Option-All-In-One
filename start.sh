@@ -17,12 +17,20 @@ if [ ! -e .panel.env ]; then
     (umask 077; set -C; printf 'PANEL_PASSWORD=%s\n' "$password" > .panel.env)
 fi
 
-mkdir -p server/missions
-if [ ! -e server/DedicatedServerConfig.json ]; then
-    cp server-config.example.json server/DedicatedServerConfig.json
+compose_env=$(docker compose config --environment)
+data_dir=$(printf '%s\n' "$compose_env" | sed -n 's/^SERVER_DATA_DIR=//p')
+data_dir=${data_dir:-./server}
+case $data_dir in
+    /*|./*|../*) ;;
+    *) data_dir="./$data_dir" ;;
+esac
+
+mkdir -p "$data_dir/missions"
+if [ ! -e "$data_dir/DedicatedServerConfig.json" ]; then
+    cp server-config.example.json "$data_dir/DedicatedServerConfig.json"
 fi
 
 docker compose up -d --build
+panel_port=$(printf '%s\n' "$compose_env" | sed -n 's/^PANEL_PORT=//p')
 printf '\n%s\n' 'Panel login is admin. Read the generated password with: cat .panel.env'
-printf '%s\n' 'From Windows: ssh -N -L 127.0.0.1:5000:127.0.0.1:5000 USER@LINUX_IP'
-printf '%s\n' 'Open http://127.0.0.1:5000 in your browser while SSH is connected.'
+printf 'From your LAN, open http://LINUX_LAN_IP:%s in your browser.\n' "${panel_port:-5000}"
