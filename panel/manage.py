@@ -713,17 +713,21 @@ def save_settings():
 
 
 def workshop_status(settings, identifier, downloaded):
-    if identifier not in configured_workshop_items(settings):
-        if not downloaded:
-            return "unsaved", "Add this item to the rotation to save it and start the Steam download."
-        if server_options.effective_ports(settings) != ACTIVE_PORTS:
-            return "restart", "Run sh start.sh on the Linux host to apply the saved settings before queueing."
-        return "downloaded", "This mission is downloaded and available to queue without saving it to the rotation."
+    saved = identifier in configured_workshop_items(settings)
+    incomplete = not downloaded and workshop.cached_item_folder(DATA_DIR, identifier) is not None
+    if not saved and not downloaded and not incomplete:
+        return "unsaved", "Add this item to the rotation to save it and start the Steam download."
     if server_options.effective_ports(settings) != ACTIVE_PORTS:
-        return "restart", "Run sh start.sh on the Linux host to apply the saved settings and start the Steam download."
+        return "restart", "Run sh start.sh on the Linux host to apply the saved settings before using this mission."
     if downloaded:
-        return "cached", "Mission file found in the server’s Workshop cache. You can queue it for the next round."
-    return "waiting", "Waiting for Steam to download a mission file. See Server logs if it does not appear."
+        if saved:
+            return "cached", "Downloaded. Queue the mission to have the game check that it can load it."
+        return "downloaded", "This mission is downloaded. You can queue it without adding it to the rotation."
+    if error := workshop.download_log_failure(DATA_DIR, identifier):
+        return "download_failed", f"The latest server log reports a Steam download failure. {error}"
+    if incomplete:
+        return "incomplete", "Steam created the item folder, but the mission metadata or the JSON it points to is missing or invalid."
+    return "waiting", "Waiting for Steam to download the mission on the server."
 
 
 @app.get("/settings/workshop")
@@ -788,11 +792,14 @@ def add_workshop():
                 revision = write_config(settings)
             cached = workshop.cached_mission_file(DATA_DIR, identifier, mission_import.UPLOAD_LIMIT)
             state, message = workshop_status(settings, identifier, cached is not None)
-            if ports == ACTIVE_PORTS and (added or state == "waiting"):
+            if ports == ACTIVE_PORTS and (added or state in ("waiting", "download_failed", "incomplete")):
                 status, _ = server_commands.reload_config(create_remote_commander(), str(CONFIG_PATH))
                 if status != "Success":
                     state = "reload_failed"
                     message = f"The server could not reload its configuration ({status}). Try again or restart the server."
+                elif not cached:
+                    state = "waiting"
+                    message = "The server was asked to download the Workshop item."
         except (OSError, ValueError, TypeError):
             return jsonify(message="Could not update the Workshop rotation. Check the saved configuration."), 503
     prefix = "Saved to the mission rotation." if added else "Already saved in the mission rotation."
@@ -1073,6 +1080,10 @@ def select_next_mission(switch=False):
         commander = create_remote_commander()
         status, _ = server_commands.set_next_mission(commander, key["Group"], key["Name"], mission["MaxTime"])
         if status != "Success":
+            if key["Group"] == "Workshop":
+                error = workshop.download_log_failure(DATA_DIR, key["Name"])
+                detail = f" Latest download error in the server log: {error}" if error else " Check Server logs for the load error, or import the mission JSON as a local scenario."
+                return jsonify(message=f"The game returned {status} while queueing {label}.{detail}"), 502
             return jsonify(message=f"Could not queue the mission. The server returned {status}."), 502
         if not switch:
             return jsonify(message=f"Queued {label} for after the current mission.")

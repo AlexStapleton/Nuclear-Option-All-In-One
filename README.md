@@ -65,6 +65,12 @@ Create a **Port** alias named `NuclearOption_UDP` with `7777` and `7778` as sepa
 
 Refresh the Multiplayer browser at home and have someone on a different network try joining. Those checks exercise different paths. A direct LAN response on `7778` confirms the game query service, while a response to the public address from the same LAN also checks hairpin NAT. [Shockfront's server browser troubleshooting](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/blob/main/DedicatedServerGuide.md#troubleshooting)
 
+## Recovering a Workshop mission
+
+In **Settings & missions**, paste the Workshop link and choose **Check Steam item and mods**. Adding it to the rotation requests a download on the dedicated server. The panel shows whether the server is still waiting, logged a Steam download error, or has an item folder with missing or invalid mission files. Once the file is downloaded, **Queue next** asks the game to load it for the next round.
+
+If the dedicated server cannot use the Workshop item, subscribe to it on your PC and let Steam finish downloading. In the Steam library where Nuclear Option is installed, open `steamapps/workshop/content/2168680/<item-id>/`. In the panel, choose **Import a mission file** and upload the mission JSON named in `meta.json`, or ZIP the item folder and upload it. Choose **Open mission**, then **Save as copy**. Queue the saved **Local scenario** once to test it, or add it to the rotation. The imported copy needs a fresh upload to pick up Workshop updates. Missions that depend on gameplay mods or custom maps still need those dependencies. [Shockfront’s Workshop mission setup](https://github.com/Shockfront-Studios/Nuclear-Option-Server-Tools/blob/main/DedicatedServerGuide.md#workshop-missions)
+
 ## Upgrading an existing install
 
 Run `git pull` and `sh start.sh` from the project folder, then refresh the web panel. **Overview** shows live status and sends announcements. **Settings & missions** edits the saved configuration and queues missions. **Moderation** handles player access and one-off maintenance commands.

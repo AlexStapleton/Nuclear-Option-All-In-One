@@ -65,13 +65,26 @@ def package_members(archive, stem):
         filename = (f"{folder}.json",)
     else:
         filename = (f"{stem}.json",)
-        if filename not in files:
-            candidates = [path for path in files if len(path) == 1 and path[0].lower().endswith(".json")
-                          and path[0].lower() != "meta.json"]
-            if len(candidates) == 1:
-                filename = candidates[0]
+    metadata = files.get(("meta.json",))
+    if metadata and metadata.file_size <= 64 * 1024:
+        try:
+            manifest = json.loads(archive.read(metadata))
+        except (ValueError, RecursionError):
+            manifest = None
+        name = manifest.get("FileName") if isinstance(manifest, dict) else None
+        if isinstance(name, str) and safe_component(name) and (f"{name}.json",) in files:
+            filename = (f"{name}.json",)
+    if filename not in files:
+        candidates = [path for path in files if len(path) == 1 and path[0].lower().endswith(".json")
+                      and path[0].lower() not in ("meta.json", "workshop.json", "objective-graph.layout.json")]
+        if len(candidates) == 1:
+            filename = candidates[0]
     if filename not in files:
         raise ValueError("The ZIP must contain a single mission folder with its matching JSON.")
+    # The imported copy has its own name and no Steam publishing identity.
+    for path in list(files):
+        if path != filename and len(path) == 1 and path[0].lower() in ("meta.json", "workshop.json"):
+            del files[path]
     return filename, files
 
 

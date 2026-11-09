@@ -14,6 +14,10 @@ DETAILS_URL = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFile
 CATALOG_URL = "https://raw.githubusercontent.com/KopterBuzz/NOMNOM/main/manifest/manifest.json"
 CACHE_LOCK = Lock()
 CACHE_TTL = 1800
+DOWNLOAD_LOG = re.compile(
+    r"\b(?:(Failed to (?:start download for|download)|Successfully downloaded|Downloading) "
+    r"workshop item ([0-9]+)\b|Workshop item ([0-9]+) is already installed and up to date\.)", re.IGNORECASE
+)
 
 # The mission author and the catalog sometimes use different names for the same package.
 MOD_ALIASES = {
@@ -165,7 +169,7 @@ def describe_item(details, catalog=None):
     if str(details.get("consumer_app_id")) != str(APP_ID):
         return {"message": "This Workshop item is for another game.", "incompatible": True}
     tags = {str(entry.get("tag", "")).casefold() for entry in details.get("tags") or [] if isinstance(entry, dict)}
-    if tags & {"livery", "liveries", "skin", "skins", "mod", "mods", "collection"} and not tags & {"mission", "missions"}:
+    if tags & {"aircraft livery", "livery", "liveries", "skin", "skins", "mod", "mods", "collection"} and not tags & {"mission", "missions"}:
         return {"message": "Steam identifies this item as something other than a mission.", "incompatible": True}
     return {"title": str(details.get("title", "")),
             "mod_required": "mod required" in tags, "custom_map": "nocustommaps" in tags,
@@ -261,27 +265,55 @@ def valid_mission_file(file, limit, _version):
 def find_mission_file(cache, limit):
     if cache.resolve() != cache or not cache.is_dir():
         return None
-    for file in cache.rglob("*"):
-        if (file.suffix.lower() != ".json" or file.name.lower() == "meta.json"
-                or not file.is_file() or not file.resolve().is_relative_to(cache)):
-            continue
-        try:
-            info = file.stat()
-            # Steam can overwrite a file in place or replace it with a different inode.
-            version = (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
-            if info.st_size <= limit and valid_mission_file(file, limit, version):
-                return file
-        except OSError:
-            continue
+    metadata = cache / "meta.json"
+    name = read_metadata(metadata).get("FileName") if metadata.is_file() else None
+    if not isinstance(name, str) or not name or any(char in name for char in "/\\\0"):
+        return None
+    file = cache / f"{name}.json"
+    if not file.is_file() or not file.resolve().is_relative_to(cache):
+        return None
+    try:
+        info = file.stat()
+        # Steam can overwrite a file in place or replace it with a different inode.
+        version = (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+        if info.st_size <= limit and valid_mission_file(file, limit, version):
+            return file
+    except OSError:
+        pass
+    return None
+
+
+def cached_item_folder(data_dir, identifier):
+    root = cache_root(data_dir)
+    if root is not None and identifier == item_id(identifier):
+        folder = root / identifier
+        if folder.is_dir() and folder.resolve() == folder:
+            return folder
     return None
 
 
 def cached_mission_file(data_dir, identifier, limit):
-    root = cache_root(data_dir)
-    if root is None:
+    folder = cached_item_folder(data_dir, identifier)
+    return find_mission_file(folder, limit) if folder else None
+
+
+def download_log_failure(data_dir, identifier):
+    """Return an item-specific error only if the latest download message is a failure."""
+    path = data_dir / ".panel-logs" / "server.log"
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        with path.open("rb") as stream:
+            start = max(0, stream.seek(0, 2) - 64 * 1024)
+            stream.seek(start)
+            lines = stream.read(64 * 1024).decode("utf-8", errors="replace").splitlines()
+    except OSError:
         return None
-    cache = root / identifier
-    return find_mission_file(cache, limit) if cache.parent == root else None
+    for line in reversed(lines[bool(start):]):
+        match = DOWNLOAD_LOG.search(line)
+        if match and identifier in (match[2], match[3]):
+            return line[match.start():][:300] if (match[1] or "").lower().startswith("failed") else None
+    return None
 
 
 def downloaded_missions(data_dir, limit):

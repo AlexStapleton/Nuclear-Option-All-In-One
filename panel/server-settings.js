@@ -31,6 +31,7 @@ const workshopStatusText = byId('workshop-status');
 const workshopDetailsText = byId('workshop-details');
 const workshopCheckButton = byId('check-workshop');
 const workshopMods = byId('workshop-mods');
+const workshopRecovery = byId('workshop-recovery');
 let workshopTimer;
 let workshopRequest = 0;
 let inspectedItem = '';
@@ -201,6 +202,7 @@ async function refreshWorkshop(lookup = false) {
         incompatibleItem = '';
         workshopDetailsText.textContent = '';
         workshopMods.hidden = true;
+        workshopRecovery.hidden = true;
     }
     workshopCheckButton.disabled = !value || lookup;
     if (!selected || !value) {
@@ -218,11 +220,14 @@ async function refreshWorkshop(lookup = false) {
         const item = await response.json();
         if (request !== workshopRequest) return;
         workshopStatusText.textContent = item.message;
+        workshopRecovery.hidden = !item.id || Boolean(item.details?.incompatible) || incompatibleItem === value;
+        if (item.id) byId('workshop-cache-path').textContent = `steamapps/workshop/content/2168680/${item.id}/`;
         readyWorkshopSelection = ['cached', 'downloaded'].includes(item.state) ? value : '';
         byId('next').textContent = readyWorkshopSelection ? 'Queue once' : 'Add and queue';
         if (lookup) {
             const {title, message, custom_map, mods} = item.details ?? {};
-            workshopDetailsText.textContent = response.ok ? title || message || '' : '';
+            const modNote = title && !mods?.required ? 'No gameplay mod requirement detected in Steam metadata.' : '';
+            workshopDetailsText.textContent = response.ok ? [title || message, modNote].filter(Boolean).join(' · ') : '';
             showWorkshopMods(item.id, mods, custom_map);
             if (title) {
                 showWorkshopTitles({[item.id]: title, [value]: title});
@@ -240,16 +245,16 @@ async function refreshWorkshop(lookup = false) {
                 await sendMissionControl(byId('next'), missionWorkspace.dataset.queueUrl, pending.mission, byId('picker-status'));
                 return;
             }
-            if (item.state !== 'waiting' || Date.now() >= pending.until) {
+            if (!['waiting', 'incomplete', 'download_failed'].includes(item.state) || Date.now() >= pending.until) {
                 clearPendingWorkshopQueue();
                 byId('picker-status').textContent = item.state === 'waiting'
                     ? 'The Workshop mission is saved. Once the download finishes, choose Queue next on its rotation row.'
                     : item.message;
-            } else {
+            } else if (item.state === 'waiting') {
                 workshopStatusText.textContent = 'Saved in the rotation. Keep this page open to queue it when the download finishes.';
             }
         }
-        if (item.state === 'waiting') workshopTimer = setTimeout(refreshWorkshop, 5000);
+        if (item.state === 'waiting' || pendingWorkshopQueue) workshopTimer = setTimeout(refreshWorkshop, 5000);
     } catch {
         if (request !== workshopRequest) return;
         if (lookup) workshopDetailsText.textContent = '';
@@ -275,6 +280,7 @@ function workshopInputChanged() {
     workshopRequest += 1;
     if (byId('mission-name').value.trim() !== inspectedItem) {
         workshopMods.hidden = true;
+        workshopRecovery.hidden = true;
     }
     if (isWorkshopLink(byId('mission-name').value.trim())) byId('group').value = 'Workshop';
     workshopControls.hidden = byId('group').value !== 'Workshop';
@@ -412,6 +418,9 @@ cancelWorkshopQueue.addEventListener('click', () => {
     refreshWorkshop();
 });
 workshopCheckButton.addEventListener('click', () => refreshWorkshop(true));
+byId('workshop-import').addEventListener('click', () => {
+    byId('import-heading').closest('details').open = true;
+});
 refreshLibrary.addEventListener('click', loadWorkshopLibrary);
 byId('available-source').addEventListener('change', renderAvailableMissions);
 document.addEventListener('rotation-rendered', renderAvailableMissions);

@@ -71,6 +71,11 @@
                     <p class="meta" id="workshop-details" role="status"></p>
                     <button type="button" id="check-workshop">Check Steam item and mods</button>
                     <button type="button" id="cancel-workshop-queue" hidden>Cancel automatic queue</button>
+                    <div class="workshop-mods" id="workshop-recovery" hidden>
+                        <p class="meta">Use Add to rotation again to retry a missing download. If Steam has already downloaded the item to your PC, import the mission JSON or a ZIP of its item folder as a local scenario.</p>
+                        <p class="meta">Find the item in your Steam library under <code id="workshop-cache-path"></code>.</p>
+                        <div class="actions"><a href="#import-heading" id="workshop-import">Open mission import</a><a href="{{ url_for('logs_page') }}">Server logs</a></div>
+                    </div>
                     <section id="workshop-mods" class="workshop-mods" aria-labelledby="workshop-mods-heading" hidden>
                         <h3 id="workshop-mods-heading">Mod requirements</h3>
                         <p class="meta" id="workshop-mods-status" role="status"></p>
@@ -82,7 +87,7 @@
                 <p class="meta"><a href="https://steamcommunity.com/app/2168680/workshop/" target="_blank" rel="noopener">Browse the Nuclear Option Workshop</a>, then paste an item link here.</p>
                 <details class="mission-source">
                     <summary id="import-heading">Import a mission file</summary>
-                    <p class="meta">Choose a mission JSON or a ZIP of one mission folder saved in the game. For multiplayer, use a mission saved with multiplayer enabled.</p>
+                    <p class="meta">Choose a mission JSON or a ZIP of one mission folder from the editor or your Steam library. For multiplayer, use a mission saved with multiplayer enabled.</p>
                     <form id="mission-import" data-url="{{ url_for('import_mission') }}">
                         <label class="field">Mission file <input id="mission-upload" name="mission" type="file" accept=".json,.zip" required></label>
                         <button type="submit">Open mission</button>
