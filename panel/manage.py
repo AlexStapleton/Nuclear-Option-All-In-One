@@ -8,7 +8,9 @@ import re
 import socket
 import stat
 import struct
+from datetime import datetime, timezone
 from functools import wraps
+from heapq import nlargest
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import Lock, Thread
@@ -16,7 +18,7 @@ from time import monotonic, sleep
 from uuid import uuid4
 from zipfile import BadZipFile
 
-from flask import abort, jsonify, make_response, render_template, request, url_for
+from flask import abort, jsonify, make_response, render_template, request, send_file, url_for
 from werkzeug.exceptions import RequestEntityTooLarge
 
 import config
@@ -249,7 +251,61 @@ def reports_page():
     highlights, timeline = after_action.summarize(report) if report else ([], [])
     return render_template("reports.html", reports=reports, report=report, players=players,
                            sort_options=after_action.SORT_OPTIONS, counters=after_action.COUNTERS,
-                           column=column, enabled=(root / "enabled").is_file(), highlights=highlights, timeline=timeline)
+                           column=column, enabled=(root / "enabled").is_file(), highlights=highlights,
+                           timeline=timeline, replays=recent_replays())
+
+
+@app.get("/reports/<report_id>/players.csv")
+def report_csv(report_id):
+    directory = DATA_DIR / ".panel-after-action" / "reports"
+    if not after_action.is_finished(directory, report_id):
+        abort(404)
+    try:
+        report = after_action.read_report(directory / f"{report_id}.json")
+    except (OSError, ValueError, TypeError, KeyError):
+        abort(404)
+    if report is None:
+        abort(404)
+    return send_file(after_action.players_csv(report), mimetype="text/csv", as_attachment=True,
+                     download_name=f"mission-{report_id}-players.csv")
+
+
+def replay_stat(path):
+    if not path.name.lower().endswith((".acmi", ".acmi.zip")) or re.search(r"[\\/:\x00-\x1f\x7f]", path.name):
+        return None
+    try:
+        info = path.stat(follow_symlinks=False)
+    except OSError:
+        return None
+    return info if stat.S_ISREG(info.st_mode) and info.st_size else None
+
+
+def recent_replays():
+    directory = DATA_DIR / "replays"
+    if directory.is_symlink():
+        return []
+    try:
+        with os.scandir(directory) as entries:
+            candidates = ((info.st_mtime, entry.name, info.st_size)
+                          for entry in entries if (info := replay_stat(Path(entry.path))))
+            latest = nlargest(40, candidates)
+    except OSError:
+        return []
+    return [{"name": name, "size_mib": f"{size / 1024**2:.2f}",
+             "saved": datetime.fromtimestamp(modified, timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
+            for modified, name, size in latest]
+
+
+@app.get("/reports/replays/<filename>")
+def replay_download(filename):
+    directory = DATA_DIR / "replays"
+    path = directory / filename
+    if path.name != filename or directory.is_symlink() or replay_stat(path) is None:
+        abort(404)
+    try:
+        return send_file(path, mimetype="application/octet-stream", as_attachment=True, conditional=True)
+    except (FileNotFoundError, PermissionError):
+        abort(404)
 
 
 @app.get("/reports/live")

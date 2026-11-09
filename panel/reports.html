@@ -36,6 +36,7 @@
                 <p class="eyebrow">Mission history</p>
                 <h1>After-action reports</h1>
                 <p class="meta">Combat results credited to players by the dedicated server.</p>
+                <p><a href="#tacview-replays">Jump to Tacview replays</a></p>
             </div>
         </section>
         {% if not enabled %}
@@ -77,6 +78,7 @@
         <section class="card">
             <h2>{{ report.mission }}</h2>
             <p class="meta">{{ report.ended_label }} · {{ report.duration // 60 }} min {{ report.duration % 60 }} sec · {{ report.status|capitalize }}</p>
+            <p><a href="{{ url_for('report_csv', report_id=report.id) }}">Download player stats (CSV)</a></p>
             {% if players %}
             {{ scoreboard(players, 'Final player combat results') }}
             {% else %}
@@ -118,6 +120,27 @@
         </section>
         {% endif %}
         {% endif %}
+        <section class="card" id="tacview-replays">
+            <h2>Tacview replays</h2>
+            <p class="meta">Download recordings from the server and open them in Tacview.</p>
+            {% if replays %}
+            <div class="table-wrap">
+                <table aria-label="Recent Tacview recordings">
+                    <thead><tr><th scope="col">Recording</th><th scope="col">Last saved</th><th scope="col">Size (MiB)</th></tr></thead>
+                    <tbody>
+                        {% for replay in replays %}
+                        <tr>
+                            <th scope="row"><a href="{{ url_for('replay_download', filename=replay.name) }}">{{ replay.name }}</a></th>
+                            <td>{{ replay.saved }}</td><td>{{ replay.size_mib }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="meta">Recordings appear here when NOBlackBox saves them to the server’s replay folder.</p>
+            {% endif %}
+        </section>
     </main>
 </body>
 </html>

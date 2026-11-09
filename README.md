@@ -10,6 +10,7 @@ Run the official Nuclear Option dedicated server on an x86-64 Linux host and man
 - **LAN admin access.** Open `http://LINUX_LAN_IP:5000` from your browser. The game's remote-command port stays inside the stack.
 - **Live server logs.** Check Steam updates, game startup, and mission-loading messages under **Server logs**.
 - **After-action reports.** An optional server-only collector powers a live combat scoreboard and finished mission reports with category leaders, totals, and a combat timeline.
+- **Debrief downloads.** Export player stats as CSV and browse Tacview recordings saved by NOBlackBox.
 - **Launch settings.** Set the server FPS cap and game log retention, save startup profiles, and tune physics workers with optional NukeStats measurements.
 - **Configurable storage.** Game files, settings, and custom missions live in `./server` by default. Set `SERVER_DATA_DIR` in `.env` to choose another host folder.
 

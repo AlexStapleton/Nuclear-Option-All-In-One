@@ -1,5 +1,7 @@
 """Read live and completed reports written atomically by the server collector."""
 
+import csv
+import io
 import json
 import re
 from datetime import datetime, timezone
@@ -104,6 +106,19 @@ def recent_reports(directory):
 def player_order(player, column):
     count = sum(player[key] for key in KILL_FIELDS) if column == "total" else player[column]
     return -count, player["name"].casefold()
+
+
+def players_csv(report):
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(("Steam ID", "Player", *(SORT_OPTIONS[key] for key in COUNTERS)))
+    for player in sorted(report["players"], key=lambda row: player_order(row, "total")):
+        name = player["name"]
+        # Spreadsheet apps may interpret names starting with a formula marker.
+        if name.lstrip().startswith(("=", "+", "-", "@")) or name.startswith(("\t", "\r", "\n")):
+            name = "'" + name
+        writer.writerow((player["steam_id"], name, *(player[key] for key in COUNTERS)))
+    return io.BytesIO(output.getvalue().encode("utf-8-sig"))
 
 
 def summarize(report):
