@@ -75,6 +75,32 @@ def live_report(directory, instance):
         return None
 
 
+def collector_state(root, launch_path, instance, enabled):
+    def marker(path):
+        try:
+            if path.is_file() and not path.is_symlink():
+                with path.open(encoding="ascii") as stream:
+                    return stream.read(96).strip()
+        except (OSError, ValueError):
+            pass
+        return ""
+
+    launch_instance, _, state = marker(launch_path).partition(" ")
+    if instance and launch_instance == instance and state == "mod_set":
+        return "mod_set"
+    if not enabled:
+        return "off"
+    if not instance or launch_instance != instance:
+        return "unconfirmed"
+    if state == "off":
+        return "restart"
+    if state == "rebuild":
+        return "rebuild"
+    if state == "starting" and marker(root / "reports" / "collector-ready") == instance:
+        return "ready"
+    return "unconfirmed"
+
+
 def is_finished(directory, identifier):
     if not identifier or not REPORT_ID.fullmatch(identifier) or directory.is_symlink() or directory.parent.is_symlink():
         return False

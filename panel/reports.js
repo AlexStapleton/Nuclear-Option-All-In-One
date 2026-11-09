@@ -15,10 +15,21 @@ function showReportStatus(message) {
     if (liveStatus.textContent !== message) liveStatus.textContent = message;
 }
 
-function showLiveReport(report, enabled) {
+const collectorMessages = {
+    off: 'Live collection is off. Run sh install-after-action.sh on the Linux host, then restart the current build.',
+    mod_set: 'A gameplay mod set is running. This build uses the after-action collector in its separate server-only profile.',
+    restart: 'Collection is enabled, but this game process started without it. Restart the current build after the round.',
+    rebuild: 'The collector files are incomplete or the game build changed. Run sh install-after-action.sh, then restart the current build.',
+    unconfirmed: 'The running server has not confirmed collector startup. Check Server logs for “After-action collector ready.”',
+    ready: 'The collector is ready. Waiting for the game to report its mission status.',
+    waiting: 'The collector is ready. Waiting for a mission to start.',
+    missing_snapshot: 'A mission is running, but the collector has not sent a recent scoreboard. Check Server logs for after-action errors.',
+};
+
+function showLiveReport(report, state) {
     liveDetails.hidden = !report;
     if (!report) {
-        showReportStatus(enabled ? 'Waiting for a recorded mission to start.' : 'Live collection is off.');
+        showReportStatus(collectorMessages[state] ?? collectorMessages.unconfirmed);
         return;
     }
     showReportStatus('Live · updates about every five seconds');
@@ -57,8 +68,8 @@ async function refreshLiveReport() {
             return;
         }
         if (!response.ok) throw new Error('Live update failed');
-        const {report, enabled, finished} = await response.json();
-        showLiveReport(report, enabled);
+        const {report, state, finished} = await response.json();
+        showLiveReport(report, state);
         if (finished) {
             liveFinished.querySelector('a').href = finished;
             liveFinished.hidden = false;

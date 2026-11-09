@@ -39,6 +39,8 @@ public sealed class AfterAction : BaseUnityPlugin
             harmony.PatchAll(typeof(AfterAction).Assembly);
             instance = this;
             Logger.LogInfo("After-action collector ready.");
+            try { PublishFile("collector-ready", gameInstance ?? string.Empty); }
+            catch (Exception error) { Warn(error); }
         }
         catch (Exception error)
         {
@@ -95,9 +97,14 @@ public sealed class AfterAction : BaseUnityPlugin
 
     private void WriteReport(string filename)
     {
+        PublishFile(filename, JsonUtility.ToJson(report));
+    }
+
+    private void PublishFile(string filename, string content)
+    {
         string file = Path.Combine(directory, filename);
         string temporary = file + ".tmp";
-        File.WriteAllText(temporary, JsonUtility.ToJson(report));
+        File.WriteAllText(temporary, content);
         if (File.Exists(file))
             File.Replace(temporary, file, null);
         else

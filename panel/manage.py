@@ -313,12 +313,20 @@ def reports_live():
     root = DATA_DIR / ".panel-after-action"
     directory = root / "reports"
     enabled = (root / "enabled").is_file()
-    report = after_action.live_report(directory, game_instance()) if enabled else None
+    instance = game_instance()
+    report = after_action.live_report(directory, instance) if enabled else None
     if report:
         report["players"].sort(key=lambda player: after_action.player_order(player, "total"))
+        state = "live"
+    else:
+        state = after_action.collector_state(root, DATA_DIR / ".panel-logs" / "after-action", instance, enabled)
+        if state == "ready":
+            status, missions = read_game_status("get-mission")
+            if status == "Success":
+                state = "missing_snapshot" if (missions or {}).get("currentMission") else "waiting"
     previous = request.args.get("previous")
     finished = url_for("reports_page", report=previous) if after_action.is_finished(directory, previous) else None
-    return jsonify(report=report, enabled=enabled, finished=finished)
+    return jsonify(report=report, enabled=enabled, finished=finished, state=state)
 
 
 @app.get("/logs/tail")

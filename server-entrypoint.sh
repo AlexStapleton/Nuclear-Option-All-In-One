@@ -128,6 +128,14 @@ selected_mod_set() {
     fi
 }
 
+after_action_launch_state() {
+    if [[ -n $instance ]]; then
+        (umask 022
+         printf '%s %s\n' "$instance" "$1" > .panel-logs/.after-action.tmp &&
+         mv -f -- .panel-logs/.after-action.tmp .panel-logs/after-action) || :
+    fi
+}
+
 stop_game() {
     kill -INT "$game_pid" 2>/dev/null || return 0
     for ((second=0; second<20; second++)); do
@@ -166,6 +174,7 @@ while :; do
     fi
     if [[ -n $selected && ! -L .panel-mods && ! -L $profile && -f $profile/libdoorstop.so &&
           -f $profile/BepInEx/core/BepInEx.Preloader.dll ]]; then
+        after_action_launch_state mod_set
         printf '[Nuclear Option] Starting with mod set %s.\n' "$selected"
         DOORSTOP_ENABLED=1 DOORSTOP_TARGET_ASSEMBLY="$profile/BepInEx/core/BepInEx.Preloader.dll" \
             LD_PRELOAD="$profile/libdoorstop.so" ./NuclearOptionServer.x86_64 "${args[@]}" &
@@ -175,15 +184,18 @@ while :; do
               -f $report_profile/BepInEx/plugins/NuclearOption.AfterAction.dll &&
               -f $report_profile/game.sha256 ]] &&
             sha256sum --status -c "$report_profile/game.sha256"; then
+            after_action_launch_state starting
             printf '%s\n' '[Nuclear Option] Starting with the server-only after-action collector.'
             NO_AAR_REPORT_DIR="$report_root/reports" NO_AAR_GAME_INSTANCE="$instance" DOORSTOP_ENABLED=1 \
                 DOORSTOP_TARGET_ASSEMBLY="$report_profile/BepInEx/core/BepInEx.Preloader.dll" \
                 LD_PRELOAD="$report_profile/libdoorstop.so" ./NuclearOptionServer.x86_64 "${args[@]}" &
         else
+            after_action_launch_state rebuild
             printf '%s\n' '[Nuclear Option] After-action collector skipped. Rebuild it for this server installation.' >&2
             ./NuclearOptionServer.x86_64 "${args[@]}" &
         fi
     else
+        after_action_launch_state off
         printf '%s\n' '[Nuclear Option] Starting the game server…'
         ./NuclearOptionServer.x86_64 "${args[@]}" &
     fi
