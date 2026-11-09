@@ -50,7 +50,10 @@ from server_mods import BEPINEX, EXTRACT_LIMIT, download, loader_ready, unpack_z
 
 profile = Path(sys.argv[1])
 archive = profile / "loader.zip"
-download(BEPINEX, archive)
+try:
+    download(BEPINEX, archive)
+except (OSError, ValueError) as error:
+    raise SystemExit(f"Could not download BepInEx {BEPINEX['version']}: {error}") from error
 unpack_zip(archive, profile, EXTRACT_LIMIT)
 archive.unlink()
 if not loader_ready(profile):

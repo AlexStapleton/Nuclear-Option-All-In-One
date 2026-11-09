@@ -7,10 +7,12 @@ import shutil
 import stat
 import time
 import zipfile
+from http.client import IncompleteRead
 from pathlib import Path, PurePosixPath
 from tempfile import NamedTemporaryFile, TemporaryDirectory
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, build_opener
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 from uuid import uuid4
 
 import workshop
@@ -22,6 +24,7 @@ BEPINEX = {
     "url": "https://github.com/BepInEx/BepInEx/releases/download/v5.4.23.5/BepInEx_linux_x64_5.4.23.5.zip",
     "hash": "sha256:e538560be65739f562519ab518a75f9c65b3f57f87457403ae7cde683c12dab7",
 }
+BEPINEX_ASSET_API = "https://api.github.com/repos/BepInEx/BepInEx/releases/assets/352395717"
 LOADER_ID = "panel-bepinex"
 SET_ID = re.compile(r"[a-f0-9]{32}")
 PACKAGE_ID = re.compile(r"[a-z0-9][a-z0-9._-]{0,119}")
@@ -388,20 +391,44 @@ class ReleaseRedirects(HTTPRedirectHandler):
 
 
 def download(asset, path):
-    digest = hashlib.sha256()
-    total = 0
     deadline = time.monotonic() + 1200
     opener = build_opener(ReleaseRedirects())
-    with opener.open(asset["url"], timeout=30) as response, path.open("xb") as stream:
-        while chunk := response.read(1024 * 1024):
-            total += len(chunk)
-            if total > ASSET_LIMIT or time.monotonic() > deadline:
-                raise ValueError(f"{asset['name']} exceeded the download limit.")
-            digest.update(chunk)
-            stream.write(chunk)
-    if f"sha256:{digest.hexdigest()}" != asset["hash"]:
-        raise ValueError(f"The downloaded checksum for {asset['name']} did not match the catalog.")
-    return total
+    primary = Request(asset["url"])
+    retry = primary
+    if asset["url"] == BEPINEX["url"]:
+        retry = Request(BEPINEX_ASSET_API, headers={"Accept": "application/octet-stream"})
+    stream = path.open("xb")
+    try:
+        with stream:
+            for attempt, request in enumerate((primary, retry, retry)):
+                digest = hashlib.sha256()
+                total = 0
+                try:
+                    with opener.open(request, timeout=30) as response:
+                        while chunk := response.read(1024 * 1024):
+                            total += len(chunk)
+                            if total > ASSET_LIMIT or time.monotonic() > deadline:
+                                raise ValueError(f"{asset['name']} exceeded the download limit.")
+                            digest.update(chunk)
+                            stream.write(chunk)
+                except (URLError, TimeoutError, ConnectionError, IncompleteRead) as error:
+                    if isinstance(error, HTTPError):
+                        error.close()
+                        if error.code not in (408, 429, 500, 502, 503, 504):
+                            raise
+                    delay = 2 ** attempt
+                    if attempt == 2 or time.monotonic() + delay >= deadline:
+                        raise
+                    stream.seek(0)
+                    stream.truncate()
+                    time.sleep(delay)
+                    continue
+                if f"sha256:{digest.hexdigest()}" != asset["hash"]:
+                    raise ValueError(f"The downloaded checksum for {asset['name']} did not match the catalog.")
+                return total
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
 
 
 def unpack_zip(path, target, budget, map_package=False):
