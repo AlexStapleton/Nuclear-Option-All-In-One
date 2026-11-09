@@ -8,7 +8,7 @@
     <Reference Include="Mirage" HintPath="$(GameManaged)/Mirage.dll" Private="false" />
     <Reference Include="UnityEngine" HintPath="$(GameManaged)/UnityEngine.dll" Private="false" />
     <Reference Include="UnityEngine.CoreModule" HintPath="$(GameManaged)/UnityEngine.CoreModule.dll" Private="false" />
-    <Reference Include="UnityEngine.JSONSerializeModule" HintPath="$(GameManaged)/UnityEngine.JSONSerializeModule.dll" Private="false" />
+    <Reference Include="Newtonsoft.Json" HintPath="$(GameManaged)/Newtonsoft.Json.dll" Private="false" />
     <Reference Include="BepInEx" HintPath="$(BepInExCore)/BepInEx.dll" Private="false" />
     <Reference Include="0Harmony" HintPath="$(BepInExCore)/0Harmony.dll" Private="false" />
   </ItemGroup>

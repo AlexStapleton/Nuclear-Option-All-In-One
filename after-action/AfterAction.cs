@@ -4,12 +4,13 @@ using System.Diagnostics;
 using System.IO;
 using BepInEx;
 using HarmonyLib;
+using Mirage;
+using Newtonsoft.Json;
 using NuclearOption.DedicatedServer;
 using NuclearOption.Networking;
 using NuclearOption.SavedMission;
-using UnityEngine;
 
-[BepInPlugin(PluginId, "After-action reports", "0.2.0")]
+[BepInPlugin(PluginId, "After-action reports", "0.2.1")]
 public sealed class AfterAction : BaseUnityPlugin
 {
     private const string PluginId = "io.github.alexstapleton.nuclearoption.afteraction";
@@ -69,8 +70,6 @@ public sealed class AfterAction : BaseUnityPlugin
         };
         missionClock.Restart();
         nextSnapshot = 0;
-        foreach (var player in UnitRegistry.playerLookup.Values)
-            GetPlayer(player);
         PublishLive();
     }
 
@@ -82,6 +81,11 @@ public sealed class AfterAction : BaseUnityPlugin
         nextSnapshot = missionClock.ElapsedMilliseconds + 5000;
         try
         {
+            var network = NetworkManagerNuclearOption.i;
+            if (network != null && network.Server != null)
+                foreach (var connection in network.Server.AuthenticatedPlayers)
+                    if (!connection.IsHost && connection.TryGetPlayer<Player>(out var player))
+                        GetPlayer(player);
             CopyPlayers();
             report.updated_utc = DateTime.UtcNow.ToString("O");
             WriteReport("live.json");
@@ -97,7 +101,7 @@ public sealed class AfterAction : BaseUnityPlugin
 
     private void WriteReport(string filename)
     {
-        PublishFile(filename, JsonUtility.ToJson(report));
+        PublishFile(filename, JsonConvert.SerializeObject(report));
     }
 
     private void PublishFile(string filename, string content)
