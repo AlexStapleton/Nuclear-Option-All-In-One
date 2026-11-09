@@ -63,8 +63,14 @@ config.mkdir(exist_ok=True)
 )
 PY
 
-docker run --rm --network none --user "$(id -u):$(id -g)" \
-    -e DOTNET_CLI_HOME=/tmp -e DOTNET_NOLOGO=1 \
+build_uid=$(id -u)
+build_gid=$(id -g)
+sdk_state=/tmp/aar-dotnet
+# Recent .NET runtimes need writable per-user mutex storage even for offline builds.
+docker run --rm --network none --user "$build_uid:$build_gid" \
+    --tmpfs "$sdk_state:rw,nosuid,nodev,mode=0700,uid=$build_uid,gid=$build_gid" \
+    -e "XDG_RUNTIME_DIR=$sdk_state" -e "XDG_DATA_HOME=$sdk_state" \
+    -e "DOTNET_CLI_HOME=$sdk_state" -e "NUGET_PACKAGES=$sdk_state/packages" -e DOTNET_NOLOGO=1 \
     --mount "type=bind,source=$(pwd -P)/after-action,target=/src,readonly" \
     --mount "type=bind,source=$managed,target=/game,readonly" \
     --mount "type=bind,source=$profile,target=/loader" \
