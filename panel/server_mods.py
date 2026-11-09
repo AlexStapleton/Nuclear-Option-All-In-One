@@ -346,7 +346,7 @@ def saved_sets(data_dir):
                 pins = plan.get("pins", {})
                 versions = [{"name": asset["name"], "version": asset["version"], "pinned": asset.get("id") in pins}
                             for asset in plan["assets"]]
-                sets.append({"id": plan["id"], "title": plan["title"], "versions": versions,
+                sets.append({"id": plan["id"], "title": plan["title"], "item": plan.get("item"), "versions": versions,
                              "clean_copy": plan.get("clean_copy", False)})
         except (OSError, ValueError, KeyError, TypeError):
             continue

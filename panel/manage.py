@@ -762,14 +762,27 @@ def downloaded_workshop():
         settings, _ = read_config()
         in_rotation = set(configured_workshop_items(settings))
         downloaded = workshop.downloaded_missions(DATA_DIR, mission_import.UPLOAD_LIMIT)
-        titles = resolve_workshop_titles(downloaded, refresh=False)
+        pending = {}
+        for mod_set in server_mods.saved_sets(DATA_DIR):
+            item = mod_set.get("item")
+            if not isinstance(item, str):
+                continue
+            try:
+                identifier = workshop.item_id(item)
+            except ValueError:
+                continue
+            if identifier not in downloaded:
+                pending.setdefault(identifier, mod_set["title"])
+        titles = resolve_workshop_titles([*downloaded, *pending], refresh=False)
         local = local_missions(settings)
     except (OSError, ValueError, TypeError):
         return jsonify(message="Could not read the server’s Workshop downloads."), 503
     missions = [{"id": identifier, "title": titles.get(identifier, filename), "in_rotation": identifier in in_rotation}
                 for identifier, filename in downloaded.items()]
     missions.sort(key=lambda mission: (mission["title"].casefold(), mission["id"]))
-    return jsonify(missions=missions, built_in=STOCK_MISSIONS, local=local)
+    mod_set_missions = [{"id": identifier, "title": titles.get(identifier, title), "in_rotation": identifier in in_rotation}
+                        for identifier, title in pending.items()]
+    return jsonify(missions=missions, mod_set_missions=mod_set_missions, built_in=STOCK_MISSIONS, local=local)
 
 
 @app.post("/settings/workshop")
