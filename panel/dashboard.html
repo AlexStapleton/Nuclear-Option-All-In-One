@@ -24,6 +24,16 @@
             </div>
         </section>
 
+        <section id="gameplay-mods" class="session-notice" aria-labelledby="gameplay-mods-title"
+                 data-status-url="{{ url_for('gameplay_mod_status') }}" data-restart-url="{{ url_for('manage_mods') }}" hidden>
+            <div class="card-heading">
+                <h2 id="gameplay-mods-title">Server started with mods</h2>
+                <button id="restart-without-mods" type="button">Restart without mods</button>
+            </div>
+            <p id="gameplay-mods-message" class="meta"></p>
+        </section>
+        <p id="gameplay-mods-status" class="meta" role="status"></p>
+
         <div class="overview">
             <section class="card mission" aria-labelledby="mission-label">
                 <h2 class="eyebrow" id="mission-label">Current mission</h2>

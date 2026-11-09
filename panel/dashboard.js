@@ -1,6 +1,11 @@
 const byId = (id) => document.getElementById(id);
 const refreshButton = byId('refresh');
 const connectionState = byId('connection-state');
+const modNotice = byId('gameplay-mods');
+const restartWithoutMods = byId('restart-without-mods');
+const modStatus = byId('gameplay-mods-status');
+let restartBusy = false;
+let restartRequested = false;
 let refreshing = false;
 let refreshNumber = 0;
 const missionTitles = new Map();
@@ -117,16 +122,67 @@ async function readStatus(name, render) {
     return result.status === 'fulfilled';
 }
 
+async function refreshModMode() {
+    try {
+        const response = await panelFetch(modNotice.dataset.statusUrl, {signal: AbortSignal.timeout(4000)});
+        if (!response.ok) return;
+        const {modded, selected, installing} = await response.json();
+        const restarting = modded === true && !selected;
+        modNotice.hidden = modded !== true && !selected;
+        byId('gameplay-mods-title').textContent = restarting ? 'Restarting without mods'
+            : modded === true ? 'Server started with mods' : 'Gameplay mod set selected';
+        byId('gameplay-mods-message').textContent = restarting ? 'Waiting for the next game process to launch.'
+            : modded === true ? 'The client’s server list can hide modded servers, even when the current mission is stock.'
+            : modded === false ? 'The running game started without gameplay mods. The selected set applies when the game restarts.'
+            : 'The panel could not confirm which mode the running game started in.';
+        restartWithoutMods.disabled = restartBusy || installing || restarting;
+        if (restartRequested && modded === false && !selected) {
+            modStatus.textContent = 'The server launched without gameplay mods.';
+            restartRequested = false;
+        }
+    } catch {
+        // Keep the last confirmed mode through a transient polling failure.
+    }
+}
+
+restartWithoutMods.addEventListener('click', async () => {
+    if (restartBusy || !window.confirm('Restart without gameplay mods? This ends the current round and disconnects players.')) return;
+    restartBusy = true;
+    restartWithoutMods.disabled = true;
+    modStatus.textContent = 'Requesting restart without mods…';
+    try {
+        const response = await panelFetch(modNotice.dataset.restartUrl, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: 'vanilla'}),
+            signal: AbortSignal.timeout(5000),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message);
+        restartRequested = true;
+        modStatus.textContent = 'Restart without mods requested. Check Server logs for progress.';
+    } catch (error) {
+        modStatus.textContent = error.message || 'Could not request the restart.';
+    } finally {
+        restartBusy = false;
+        restartWithoutMods.disabled = restartRequested;
+        await refreshModMode();
+    }
+});
+
 async function refresh() {
     if (refreshing) return;
     refreshing = true;
     const refreshId = ++refreshNumber;
     refreshButton.disabled = true;
     try {
-        const results = await Promise.all([
-            readStatus('get-mission', result => renderMission(result, refreshId)),
-            readStatus('get-mission-time', renderClock),
-            readStatus('get-player-list', renderRoster),
+        const [results] = await Promise.all([
+            Promise.all([
+                readStatus('get-mission', result => renderMission(result, refreshId)),
+                readStatus('get-mission-time', renderClock),
+                readStatus('get-player-list', renderRoster),
+            ]),
+            refreshModMode(),
         ]);
         const successes = results.filter(Boolean).length;
         connectionState.dataset.state = successes === results.length ? 'online' : successes ? 'partial' : 'offline';

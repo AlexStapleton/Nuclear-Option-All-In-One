@@ -133,6 +133,25 @@ def moderation_page():
     return render_template("moderation.html")
 
 
+@app.get("/status/mods")
+def gameplay_mod_status():
+    try:
+        instance = game_instance()
+        marker = launch_settings.small_file(DATA_DIR / ".panel-logs" / "after-action", 96) or ""
+        launched, _, mode = marker.strip().partition(" ")
+        running_modded = None
+        if instance and launched == instance == game_instance():
+            if mode == "mod_set":
+                running_modded = True
+            elif mode in ("off", "starting", "rebuild"):
+                running_modded = False
+        with MOD_LOCK:
+            selected = server_mods.selected_set(DATA_DIR)
+            return jsonify(modded=running_modded, selected=bool(selected), installing=mod_job["running"])
+    except (OSError, ValueError):
+        return jsonify(message="Could not read the server’s mod status."), 503
+
+
 def game_instance():
     marker = DATA_DIR / ".panel-logs" / "game-instance"
     try:

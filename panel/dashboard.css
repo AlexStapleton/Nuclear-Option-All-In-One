@@ -52,6 +52,8 @@ nav a:hover, nav a[aria-current] { color: var(--text); background: #243344; }
 
 .overview, .details { display: grid; gap: 1rem; }
 .overview { grid-template-columns: 1.3fr 1fr 1fr; }
+#gameplay-mods { margin: 0 0 1rem; border-left-color: #ffd48a; }
+#gameplay-mods-status:not(:empty) { margin-bottom: 1rem; }
 .details { grid-template-columns: 1.6fr 1fr; margin-top: 1rem; }
 .card { min-width: 0; padding: 1.2rem; border: 1px solid var(--line); border-radius: .75rem; background: var(--panel); }
 .mission { border-top: 2px solid var(--accent); }
