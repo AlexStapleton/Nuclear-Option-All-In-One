@@ -176,7 +176,7 @@ while :; do
               -f $report_profile/game.sha256 ]] &&
             sha256sum --status -c "$report_profile/game.sha256"; then
             printf '%s\n' '[Nuclear Option] Starting with the server-only after-action collector.'
-            NO_AAR_REPORT_DIR="$report_root/reports" DOORSTOP_ENABLED=1 \
+            NO_AAR_REPORT_DIR="$report_root/reports" NO_AAR_GAME_INSTANCE="$instance" DOORSTOP_ENABLED=1 \
                 DOORSTOP_TARGET_ASSEMBLY="$report_profile/BepInEx/core/BepInEx.Preloader.dll" \
                 LD_PRELOAD="$report_profile/libdoorstop.so" ./NuclearOptionServer.x86_64 "${args[@]}" &
         else

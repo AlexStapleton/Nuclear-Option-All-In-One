@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using BepInEx;
 using HarmonyLib;
@@ -8,21 +9,26 @@ using NuclearOption.Networking;
 using NuclearOption.SavedMission;
 using UnityEngine;
 
-[BepInPlugin(PluginId, "After-action reports", "0.1.0")]
+[BepInPlugin(PluginId, "After-action reports", "0.2.0")]
 public sealed class AfterAction : BaseUnityPlugin
 {
     private const string PluginId = "io.github.alexstapleton.nuclearoption.afteraction";
     private static AfterAction instance;
     private Harmony harmony;
     private string directory;
+    private string gameInstance;
     private Report report;
     private bool warned;
+    private readonly Stopwatch missionClock = new Stopwatch();
+    private long nextSnapshot;
     private readonly Dictionary<ulong, PlayerResult> players = new Dictionary<ulong, PlayerResult>();
     private readonly Dictionary<PersistentID, HashSet<ulong>> assists = new Dictionary<PersistentID, HashSet<ulong>>();
+    private readonly SortedDictionary<int, CombatWindow> timeline = new SortedDictionary<int, CombatWindow>();
 
     private void Awake()
     {
         directory = Environment.GetEnvironmentVariable("NO_AAR_REPORT_DIR");
+        gameInstance = Environment.GetEnvironmentVariable("NO_AAR_GAME_INSTANCE");
         if (string.IsNullOrEmpty(directory) || Array.IndexOf(Environment.GetCommandLineArgs(), "-DedicatedServer") < 0)
             return;
 
@@ -55,10 +61,47 @@ public sealed class AfterAction : BaseUnityPlugin
         {
             id = Guid.NewGuid().ToString("N"),
             mission = mission.Name,
-            started_utc = DateTime.UtcNow.ToString("O")
+            started_utc = DateTime.UtcNow.ToString("O"),
+            game_instance = gameInstance,
+            status = "live"
         };
+        missionClock.Restart();
+        nextSnapshot = 0;
         foreach (var player in UnitRegistry.playerLookup.Values)
             GetPlayer(player);
+        PublishLive();
+    }
+
+    private void PublishLive()
+    {
+        if (report == null || string.IsNullOrEmpty(gameInstance) || missionClock.ElapsedMilliseconds < nextSnapshot)
+            return;
+
+        nextSnapshot = missionClock.ElapsedMilliseconds + 5000;
+        try
+        {
+            CopyPlayers();
+            report.updated_utc = DateTime.UtcNow.ToString("O");
+            WriteReport("live.json");
+        }
+        catch (Exception error) { Warn(error); }
+    }
+
+    private void CopyPlayers()
+    {
+        report.players.Clear();
+        report.players.AddRange(players.Values);
+    }
+
+    private void WriteReport(string filename)
+    {
+        string file = Path.Combine(directory, filename);
+        string temporary = file + ".tmp";
+        File.WriteAllText(temporary, JsonUtility.ToJson(report));
+        if (File.Exists(file))
+            File.Replace(temporary, file, null);
+        else
+            File.Move(temporary, file);
     }
 
     private void Finish(string status)
@@ -70,11 +113,9 @@ public sealed class AfterAction : BaseUnityPlugin
         {
             report.ended_utc = DateTime.UtcNow.ToString("O");
             report.status = status;
-            report.players.AddRange(players.Values);
-            string file = Path.Combine(directory, report.id + ".json");
-            string temporary = file + ".tmp";
-            File.WriteAllText(temporary, JsonUtility.ToJson(report));
-            File.Move(temporary, file);
+            CopyPlayers();
+            report.timeline.AddRange(timeline.Values);
+            WriteReport(report.id + ".json");
         }
         catch (Exception error)
         {
@@ -83,8 +124,12 @@ public sealed class AfterAction : BaseUnityPlugin
         finally
         {
             report = null;
+            missionClock.Stop();
             players.Clear();
             assists.Clear();
+            timeline.Clear();
+            try { File.Delete(Path.Combine(directory, "live.json")); }
+            catch (Exception error) { Warn(error); }
         }
     }
 
@@ -145,16 +190,24 @@ public sealed class AfterAction : BaseUnityPlugin
 
         if (killer != null)
         {
+            // Keep at most one day of five-minute windows plus an overflow window.
+            int minute = (int)Math.Min(1440, missionClock.ElapsedMilliseconds / 300000 * 5);
+            if (!timeline.TryGetValue(minute, out var window))
+            {
+                window = new CombatWindow { minute = minute };
+                timeline.Add(minute, window);
+            }
             switch (killedType)
             {
                 case KillType.Aircraft:
                     if (pilot != null) killer.player_aircraft++;
                     else killer.ai_aircraft++;
+                    window.aircraft++;
                     break;
-                case KillType.Building: killer.buildings++; break;
-                case KillType.Vehicle: killer.vehicles++; break;
-                case KillType.Ship: killer.ships++; break;
-                case KillType.Missile: killer.missiles++; break;
+                case KillType.Building: killer.buildings++; window.surface++; break;
+                case KillType.Vehicle: killer.vehicles++; window.surface++; break;
+                case KillType.Ship: killer.ships++; window.surface++; break;
+                case KillType.Missile: killer.missiles++; window.missiles++; break;
             }
         }
         if (contributors != null)
@@ -188,6 +241,8 @@ public sealed class AfterAction : BaseUnityPlugin
         {
             if (__result)
                 instance?.Finish("completed");
+            else
+                instance?.PublishLive();
         }
     }
 
@@ -229,8 +284,15 @@ public sealed class AfterAction : BaseUnityPlugin
     private sealed class Report
     {
         public int schema = 1;
-        public string id, mission, started_utc, ended_utc, status;
+        public string id, mission, started_utc, ended_utc, updated_utc, game_instance, status;
         public List<PlayerResult> players = new List<PlayerResult>();
+        public List<CombatWindow> timeline = new List<CombatWindow>();
+    }
+
+    [Serializable]
+    private sealed class CombatWindow
+    {
+        public int minute, aircraft, surface, missiles;
     }
 
     [Serializable]

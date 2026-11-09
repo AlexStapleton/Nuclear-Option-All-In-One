@@ -16,7 +16,7 @@ from time import monotonic, sleep
 from uuid import uuid4
 from zipfile import BadZipFile
 
-from flask import abort, jsonify, make_response, render_template, request
+from flask import abort, jsonify, make_response, render_template, request, url_for
 from werkzeug.exceptions import RequestEntityTooLarge
 
 import config
@@ -246,8 +246,23 @@ def reports_page():
     if column not in after_action.SORT_OPTIONS:
         column = "total"
     players = sorted(report["players"], key=lambda player: after_action.player_order(player, column)) if report else []
+    highlights, timeline = after_action.summarize(report) if report else ([], [])
     return render_template("reports.html", reports=reports, report=report, players=players,
-                           sort_options=after_action.SORT_OPTIONS, column=column, enabled=(root / "enabled").is_file())
+                           sort_options=after_action.SORT_OPTIONS, counters=after_action.COUNTERS,
+                           column=column, enabled=(root / "enabled").is_file(), highlights=highlights, timeline=timeline)
+
+
+@app.get("/reports/live")
+def reports_live():
+    root = DATA_DIR / ".panel-after-action"
+    directory = root / "reports"
+    enabled = (root / "enabled").is_file()
+    report = after_action.live_report(directory, game_instance()) if enabled else None
+    if report:
+        report["players"].sort(key=lambda player: after_action.player_order(player, "total"))
+    previous = request.args.get("previous")
+    finished = url_for("reports_page", report=previous) if after_action.is_finished(directory, previous) else None
+    return jsonify(report=report, enabled=enabled, finished=finished)
 
 
 @app.get("/logs/tail")

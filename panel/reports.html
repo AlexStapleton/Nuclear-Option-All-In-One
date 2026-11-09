@@ -1,4 +1,24 @@
 <!doctype html>
+{% macro scoreboard(rows, label) %}
+<div class="table-wrap">
+    <table aria-label="{{ label }}">
+        <thead><tr>
+            <th scope="col">Player</th>
+            {% for counter in counters %}
+            <th scope="col" data-counter="{{ counter }}">{{ sort_options[counter] }}</th>
+            {% endfor %}
+        </tr></thead>
+        <tbody>
+            {% for player in rows %}
+            <tr>
+                <th scope="row">{{ player.name }}<br><small class="meta">{{ player.steam_id }}</small></th>
+                {% for counter in counters %}<td>{{ player[counter] }}</td>{% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endmacro %}
 <html lang="en">
 <head>
     <meta charset="utf-8">
@@ -6,6 +26,7 @@
     <title>After-action reports · Nuclear Option</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
     {% include 'session-head.html' %}
+    <script defer src="{{ url_for('static', filename='reports.js') }}"></script>
 </head>
 <body>
     {% include 'navigation.html' %}
@@ -20,6 +41,16 @@
         {% if not enabled %}
         <p class="session-notice">The server-only collector is off. See the setup guide to enable it for stock missions.</p>
         {% endif %}
+        <section class="card" id="live-report" data-url="{{ url_for('reports_live') }}">
+            <h2>Live scoreboard</h2>
+            <p class="meta" id="live-report-status" role="status">Checking for an active mission…</p>
+            <div id="live-report-details" hidden>
+                <h3 id="live-report-title"></h3>
+                <p class="meta" id="live-report-meta"></p>
+                {{ scoreboard([], 'Live player combat results') }}
+            </div>
+            <p class="actions" id="live-report-finished" hidden><a>View the mission that just ended</a></p>
+        </section>
         <section class="card">
             <h2>Recent missions</h2>
             {% if reports %}
@@ -47,29 +78,45 @@
             <h2>{{ report.mission }}</h2>
             <p class="meta">{{ report.ended_label }} · {{ report.duration // 60 }} min {{ report.duration % 60 }} sec · {{ report.status|capitalize }}</p>
             {% if players %}
+            {{ scoreboard(players, 'Final player combat results') }}
+            {% else %}
+            <p class="meta">No player combat events were recorded for this mission.</p>
+            {% endif %}
+        </section>
+        <section class="card">
+            <h2>Mission highlights</h2>
+            <div class="report-highlights">
+                {% for item in highlights %}
+                <div>
+                    <h3>{{ item.label }}</h3>
+                    <p class="metric">{{ item.total }}</p>
+                    {% if item.leaders %}
+                    <p class="meta">{{ item.leaders|join(', ') }}{% if item.more %} + {{ item.more }} more{% endif %} · {{ item.best }} each{% if item.leaders|length > 1 or item.more %} (tied){% endif %}</p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% if timeline %}
+        <section class="card">
+            <h2>Combat timeline</h2>
+            <p class="meta">Player-credited kills and interceptions grouped into five-minute windows. Only windows with combat credit are shown.</p>
             <div class="table-wrap">
-                <table aria-label="Player combat results">
-                    <thead><tr>
-                        <th scope="col">Player</th><th scope="col">Player aircraft</th><th scope="col">AI aircraft</th>
-                        <th scope="col">Buildings</th><th scope="col">Vehicles</th><th scope="col">Ships</th>
-                        <th scope="col">Missiles intercepted</th><th scope="col">Assists</th><th scope="col">Aircraft losses</th>
-                    </tr></thead>
+                <table aria-label="Combat by mission time">
+                    <thead><tr><th scope="col">Mission time</th><th scope="col">Aircraft</th>
+                        <th scope="col">Surface targets</th><th scope="col">Missiles</th><th scope="col">Total</th></tr></thead>
                     <tbody>
-                        {% for player in players %}
+                        {% for window in timeline %}
                         <tr>
-                            <th scope="row">{{ player.name }}<br><small class="meta">{{ player.steam_id }}</small></th>
-                            <td>{{ player.player_aircraft }}</td><td>{{ player.ai_aircraft }}</td>
-                            <td>{{ player.buildings }}</td><td>{{ player.vehicles }}</td><td>{{ player.ships }}</td>
-                            <td>{{ player.missiles }}</td><td>{{ player.assists }}</td><td>{{ player.deaths }}</td>
+                            <th scope="row">{% if window.minute == 1440 %}24 hours onward{% else %}{{ window.minute }}–{{ window.minute + 5 }} min{% endif %}</th>
+                            <td>{{ window.aircraft }}</td><td>{{ window.surface }}</td><td>{{ window.missiles }}</td><td>{{ window.total }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
-            {% else %}
-            <p class="meta">No player combat events were recorded for this mission.</p>
-            {% endif %}
         </section>
+        {% endif %}
         {% endif %}
     </main>
 </body>

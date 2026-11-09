@@ -16,5 +16,6 @@ COPY dashboard.html logs.html moderation.html mods.html /app/templates/
 COPY reports.html /app/templates/
 COPY navigation.html login.html password.html session-head.html /app/templates/
 COPY dashboard.css dashboard.js logs.js moderation.js mission-import.js mods.js server-settings.js launch-settings.js session.js /app/static/
+COPY reports.js /app/static/
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 CMD ["python", "manage.py"]

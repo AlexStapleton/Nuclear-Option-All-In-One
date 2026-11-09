@@ -1,8 +1,8 @@
-"""Read completed reports written atomically by the server collector."""
+"""Read live and completed reports written atomically by the server collector."""
 
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 KILL_FIELDS = ("player_aircraft", "ai_aircraft", "buildings", "vehicles", "ships", "missiles")
@@ -19,22 +19,36 @@ SORT_OPTIONS = {
     "deaths": "Aircraft losses",
 }
 REPORT_FILE = re.compile(r"[a-f0-9]{32}\.json")
+REPORT_ID = re.compile(r"[a-f0-9]{32}")
 STEAM_ID = re.compile(r"[0-9]{17}")
 
 
-def read_report(path):
+def read_report(path, live_instance=None):
     with path.open("rb") as stream:
         raw = stream.read(256 * 1024 + 1)
     if len(raw) > 256 * 1024:
         return None
     report = json.loads(raw)
-    if not isinstance(report, dict) or report.get("schema") != 1 or report.get("id") != path.stem:
+    if not isinstance(report, dict) or report.get("schema") != 1:
         return None
-    if not isinstance(report.get("mission"), str) or report.get("status") not in ("completed", "interrupted"):
+    identifier = report.get("id")
+    if not isinstance(identifier, str) or not REPORT_ID.fullmatch(identifier):
         return None
+    if not isinstance(report.get("mission"), str):
+        return None
+    if live_instance is None:
+        if identifier != path.stem or report.get("status") not in ("completed", "interrupted"):
+            return None
+        end_field = "ended_utc"
+    else:
+        if report.get("status") != "live" or report.get("game_instance") != live_instance:
+            return None
+        end_field = "updated_utc"
     started = datetime.fromisoformat(report["started_utc"])
-    ended = datetime.fromisoformat(report["ended_utc"])
+    ended = datetime.fromisoformat(report[end_field])
     if started.tzinfo is None or ended.tzinfo is None or ended < started:
+        return None
+    if live_instance is not None and not 0 <= (datetime.now(timezone.utc) - ended).total_seconds() < 30:
         return None
     players = report.get("players")
     if not isinstance(players, list):
@@ -45,8 +59,25 @@ def read_report(path):
            for player in players):
         return None
     report["duration"] = int((ended - started).total_seconds())
-    report["ended_label"] = ended.strftime("%Y-%m-%d %H:%M UTC")
+    report["ended_label"] = ended.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     return report
+
+
+def live_report(directory, instance):
+    path = directory / "live.json"
+    if not instance or directory.is_symlink() or directory.parent.is_symlink() or path.is_symlink():
+        return None
+    try:
+        return read_report(path, live_instance=instance)
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+
+
+def is_finished(directory, identifier):
+    if not identifier or not REPORT_ID.fullmatch(identifier) or directory.is_symlink() or directory.parent.is_symlink():
+        return False
+    path = directory / f"{identifier}.json"
+    return path.is_file() and not path.is_symlink()
 
 
 def recent_reports(directory):
@@ -73,3 +104,31 @@ def recent_reports(directory):
 def player_order(player, column):
     count = sum(player[key] for key in KILL_FIELDS) if column == "total" else player[column]
     return -count, player["name"].casefold()
+
+
+def summarize(report):
+    highlights = []
+    for label, fields in (
+        ("Aircraft shot down", ("player_aircraft", "ai_aircraft")),
+        ("Surface targets destroyed", ("buildings", "vehicles", "ships")),
+        ("Missiles intercepted", ("missiles",)),
+        ("Assists", ("assists",)),
+    ):
+        counts = [(sum(player[key] for key in fields), player["name"]) for player in report["players"]]
+        best = max((count for count, _ in counts), default=0)
+        leaders = sorted((name for count, name in counts if best and count == best), key=str.casefold)
+        highlights.append({"label": label, "total": sum(count for count, _ in counts),
+                           "best": best, "leaders": leaders[:3], "more": max(0, len(leaders) - 3)})
+
+    timeline = report.get("timeline")
+    windows = []
+    if isinstance(timeline, list):
+        fields = ("minute", "aircraft", "surface", "missiles")
+        for row in timeline[:289]:
+            if (not isinstance(row, dict) or any(type(row.get(key)) is not int or row[key] < 0 for key in fields)
+                    or row["minute"] > 1440 or row["minute"] % 5):
+                continue
+            total = row["aircraft"] + row["surface"] + row["missiles"]
+            if total:
+                windows.append({**row, "total": total})
+    return highlights, sorted(windows, key=lambda row: row["minute"])
