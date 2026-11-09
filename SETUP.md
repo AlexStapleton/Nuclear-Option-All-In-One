@@ -66,6 +66,16 @@ Under **Startup profiles**, save the current game config under a name. **Restore
 
 **Physics workers & measured performance** is optional and requires a compatible NukeStats server plugin. For an existing BepInEx mod set, review the toolkit's features before adding its `NukeStats.dll` release to `.panel-mods/<selected-set>/BepInEx/plugins/NukeStats/`. Start that mod set once so BepInEx generates `BepInEx/config/anz.nukestats.cfg`. The panel edits only `Perf.JobWorkers` and `Perf.Timing` in that file. Zero uses the game's worker selection. Enable timing and restart to see measured FPS, average and 95th-percentile frame time, and the worker count as reports arrive, usually once a minute. NukeStats' own FPS override or frame pacer can supersede the launch cap during play. [NukeStats releases](https://github.com/Tomosnuclearbombos/nuclear-option-toolkit/releases) · [Server benchmarks](https://github.com/Tomosnuclearbombos/nuclear-option-tester)
 
+### After-action reports
+
+The optional collector runs in the dedicated server process with its own BepInEx installation. It observes the game's combat events without changing version checks or sending custom network messages. Leave the gameplay mod set unselected and use a stock mission to play with a regular Steam client.
+
+1. Update the checkout and run `sh start.sh` during a maintenance window. Wait for the server to finish its Steam update.
+2. Run `sh install-after-action.sh` on the Linux host. It checks the Linux loader download and compiles the collector against the installed dedicated server using a .NET SDK container.
+3. Choose **Restart current build** under **Settings & missions → Launch settings**. In **Server logs**, look for **After-action collector ready**. After a mission ends, open **After-action reports**.
+
+Reports include the game's primary kill credit and separate assists. Enemy missiles that receive kill credit count as interceptions. The report separates player aircraft and AI aircraft, and counts player aircraft losses reported by the game. Completed reports live under `SERVER_DATA_DIR/.panel-after-action/reports/`. A graceful shutdown can save the current report as interrupted. If the game assemblies change after an update, run the installer again and restart the current build. Run `sh install-after-action.sh --disable` and restart to turn off collection while keeping report history.
+
 ### Mission sources
 - **Built-in missions.** Use the presets or enter an exact mission name with the appropriate group if it is missing from the picker.
 - **Local custom scenarios.** In the Windows mission editor, save a multiplayer mission. Under **Add missions**, expand **Import a mission file** to open the saved JSON or a ZIP of one mission folder. A ZIP keeps any companion files. Edit the fields the panel recognizes, such as the briefing, respawn rule, or weather, and choose **Save as copy**. The new mission is selected in the picker. Use **Queue once** for a one-time run or **Add to rotation** followed by **Save rotation**. Uploads support up to 16 MiB, with ZIP contents up to 64 MiB unpacked. If you set a custom `MissionDirectory`, use a subfolder under `/server` so both containers can see it.

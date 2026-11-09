@@ -147,6 +147,13 @@ args=(-logFile - -limitframerate "$fps" -DedicatedServer /server/DedicatedServer
 while :; do
     selected=$(selected_mod_set)
     profile=/server/.panel-mods/$selected
+    report_root=/server/.panel-after-action
+    report_profile=
+    if [[ -z $selected && ! -L $report_root && -f $report_root/enabled && ! -L $report_root/enabled ]] &&
+        IFS= read -r -n 32 report_loader < "$report_root/enabled" &&
+        [[ $report_loader =~ ^loader\.[a-zA-Z0-9]{8}$ ]]; then
+        report_profile=$report_root/$report_loader
+    fi
     if instance=$(cat /proc/sys/kernel/random/uuid) &&
         (umask 022
          printf '%s\n' "$instance" > .panel-logs/.game-instance.tmp &&
@@ -162,6 +169,20 @@ while :; do
         printf '[Nuclear Option] Starting with mod set %s.\n' "$selected"
         DOORSTOP_ENABLED=1 DOORSTOP_TARGET_ASSEMBLY="$profile/BepInEx/core/BepInEx.Preloader.dll" \
             LD_PRELOAD="$profile/libdoorstop.so" ./NuclearOptionServer.x86_64 "${args[@]}" &
+    elif [[ -n $report_profile && ! -L $report_profile ]]; then
+        if [[ -f $report_profile/libdoorstop.so &&
+              -f $report_profile/BepInEx/core/BepInEx.Preloader.dll &&
+              -f $report_profile/BepInEx/plugins/NuclearOption.AfterAction.dll &&
+              -f $report_profile/game.sha256 ]] &&
+            sha256sum --status -c "$report_profile/game.sha256"; then
+            printf '%s\n' '[Nuclear Option] Starting with the server-only after-action collector.'
+            NO_AAR_REPORT_DIR="$report_root/reports" DOORSTOP_ENABLED=1 \
+                DOORSTOP_TARGET_ASSEMBLY="$report_profile/BepInEx/core/BepInEx.Preloader.dll" \
+                LD_PRELOAD="$report_profile/libdoorstop.so" ./NuclearOptionServer.x86_64 "${args[@]}" &
+        else
+            printf '%s\n' '[Nuclear Option] After-action collector skipped. Rebuild it for this server installation.' >&2
+            ./NuclearOptionServer.x86_64 "${args[@]}" &
+        fi
     else
         printf '%s\n' '[Nuclear Option] Starting the game server…'
         ./NuclearOptionServer.x86_64 "${args[@]}" &

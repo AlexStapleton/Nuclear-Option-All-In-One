@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>After-action reports · Nuclear Option</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+    {% include 'session-head.html' %}
+</head>
+<body>
+    {% include 'navigation.html' %}
+    <main class="shell page">
+        <section class="hero">
+            <div>
+                <p class="eyebrow">Mission history</p>
+                <h1>After-action reports</h1>
+                <p class="meta">Combat results credited to players by the dedicated server.</p>
+            </div>
+        </section>
+        {% if not enabled %}
+        <p class="session-notice">The server-only collector is off. See the setup guide to enable it for stock missions.</p>
+        {% endif %}
+        <section class="card">
+            <h2>Recent missions</h2>
+            {% if reports %}
+            <form method="get" action="{{ url_for('reports_page') }}">
+                <label for="report">Mission report</label>
+                <select id="report" name="report">
+                    {% for item in reports %}
+                    <option value="{{ item.id }}"{% if item.id == report.id %} selected{% endif %}>{{ item.mission }} · {{ item.ended_label }}{% if item.status == 'interrupted' %} · Interrupted{% endif %}</option>
+                    {% endfor %}
+                </select>
+                <label for="sort">Sort players by</label>
+                <select id="sort" name="sort">
+                    {% for value, label in sort_options.items() %}
+                    <option value="{{ value }}"{% if value == column %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <div class="actions"><button type="submit">View report</button></div>
+            </form>
+            {% else %}
+            <p class="meta">Reports appear here after a recorded mission ends.</p>
+            {% endif %}
+        </section>
+        {% if report %}
+        <section class="card">
+            <h2>{{ report.mission }}</h2>
+            <p class="meta">{{ report.ended_label }} · {{ report.duration // 60 }} min {{ report.duration % 60 }} sec · {{ report.status|capitalize }}</p>
+            {% if players %}
+            <div class="table-wrap">
+                <table aria-label="Player combat results">
+                    <thead><tr>
+                        <th scope="col">Player</th><th scope="col">Player aircraft</th><th scope="col">AI aircraft</th>
+                        <th scope="col">Buildings</th><th scope="col">Vehicles</th><th scope="col">Ships</th>
+                        <th scope="col">Missiles intercepted</th><th scope="col">Assists</th><th scope="col">Aircraft losses</th>
+                    </tr></thead>
+                    <tbody>
+                        {% for player in players %}
+                        <tr>
+                            <th scope="row">{{ player.name }}<br><small class="meta">{{ player.steam_id }}</small></th>
+                            <td>{{ player.player_aircraft }}</td><td>{{ player.ai_aircraft }}</td>
+                            <td>{{ player.buildings }}</td><td>{{ player.vehicles }}</td><td>{{ player.ships }}</td>
+                            <td>{{ player.missiles }}</td><td>{{ player.assists }}</td><td>{{ player.deaths }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="meta">No player combat events were recorded for this mission.</p>
+            {% endif %}
+        </section>
+        {% endif %}
+    </main>
+</body>
+</html>

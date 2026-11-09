@@ -13,7 +13,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 import config
 
-PANEL_PAGES = ("index", "settings_page", "moderation_page", "logs_page", "mods_page", "change_password")
+PANEL_PAGES = ("index", "settings_page", "moderation_page", "logs_page", "mods_page", "reports_page", "change_password")
 SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 PASSWORD_HASH_METHOD = "scrypt:32768:8:1"
 PASSWORD_HASH = re.compile(r"scrypt:32768:8:1\$[A-Za-z0-9]{16}\$[a-f0-9]{128}")

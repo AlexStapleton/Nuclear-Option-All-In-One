@@ -6,6 +6,7 @@
             <a href="{{ url_for('settings_page') }}"{% if request.endpoint == 'settings_page' %} aria-current="page"{% endif %}>Settings &amp; missions</a>
             <a href="{{ url_for('mods_page') }}"{% if request.endpoint == 'mods_page' %} aria-current="page"{% endif %}>Mod management</a>
             <a href="{{ url_for('logs_page') }}"{% if request.endpoint == 'logs_page' %} aria-current="page"{% endif %}>Server logs</a>
+            <a href="{{ url_for('reports_page') }}"{% if request.endpoint == 'reports_page' %} aria-current="page"{% endif %}>After-action reports</a>
             <a href="{{ url_for('moderation_page') }}"{% if request.endpoint == 'moderation_page' %} aria-current="page"{% endif %}>Moderation</a>
             <a href="{{ url_for('change_password') }}"{% if request.endpoint == 'change_password' %} aria-current="page"{% endif %}>Change password</a>
             <form method="post" action="{{ url_for('logout') }}" class="sign-out">

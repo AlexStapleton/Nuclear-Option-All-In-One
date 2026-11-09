@@ -20,6 +20,7 @@ from flask import abort, jsonify, make_response, render_template, request
 from werkzeug.exceptions import RequestEntityTooLarge
 
 import config
+import after_action
 import launch_settings
 import mission_import
 import mod_inventory
@@ -228,6 +229,25 @@ def moderation_access():
 @app.get("/logs")
 def logs_page():
     return render_template("logs.html")
+
+
+@app.get("/reports")
+def reports_page():
+    root = DATA_DIR / ".panel-after-action"
+    reports = after_action.recent_reports(root / "reports")
+    selected = request.args.get("report")
+    if selected is None:
+        report = reports[0] if reports else None
+    else:
+        report = next((item for item in reports if item["id"] == selected), None)
+        if report is None:
+            abort(404)
+    column = request.args.get("sort", "total")
+    if column not in after_action.SORT_OPTIONS:
+        column = "total"
+    players = sorted(report["players"], key=lambda player: after_action.player_order(player, column)) if report else []
+    return render_template("reports.html", reports=reports, report=report, players=players,
+                           sort_options=after_action.SORT_OPTIONS, column=column, enabled=(root / "enabled").is_file())
 
 
 @app.get("/logs/tail")
